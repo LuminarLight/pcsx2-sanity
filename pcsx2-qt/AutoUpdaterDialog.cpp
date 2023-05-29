@@ -201,7 +201,7 @@ void AutoUpdaterDialog::getLatestReleaseComplete(QNetworkReply* reply)
 		const QByteArray reply_json(reply->readAll());
 		QJsonParseError parse_error;
 		QJsonDocument doc(QJsonDocument::fromJson(reply_json, &parse_error));
-		if (true//doc.isObject())
+		if (true/*doc.isObject()*/)
 		{
 			if (!doc.isObject())
 			{
