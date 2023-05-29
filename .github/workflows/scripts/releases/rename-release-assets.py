@@ -8,7 +8,7 @@ accepted_exts = ["AppImage", "tar.xz", "7z"]
 
 
 for dir_name in os.listdir(scan_dir):
-  asset_name = "pcsx2-{}".format(tag)
+  asset_name = "pcsx2-sanity-{}".format(tag)
   if "macos" in dir_name.lower():
     asset_name += "-macos"
   elif "linux" in dir_name.lower():
