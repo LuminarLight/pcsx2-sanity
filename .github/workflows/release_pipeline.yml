@@ -9,7 +9,7 @@ jobs:
   # Build Everything
   # Linux
   build_linux_qt:
-    if: github.repository == 'PCSX2/pcsx2'
+    if: github.repository == 'LuminarLight/pcsx2-sanity'
     name: "Linux"
     uses: ./.github/workflows/linux_build_qt.yml
     with:
@@ -21,7 +21,7 @@ jobs:
 
   # Windows
   build_windows_qt:
-    if: github.repository == 'PCSX2/pcsx2'
+    if: github.repository == 'LuminarLight/pcsx2-sanity'
     name: "Windows"
     uses: ./.github/workflows/windows_build_qt.yml
     with:
@@ -33,7 +33,7 @@ jobs:
 
   # MacOS
   build_macos_qt:
-    if: github.repository == 'PCSX2/pcsx2'
+    if: github.repository == 'LuminarLight/pcsx2-sanity'
     name: "MacOS"
     uses: ./.github/workflows/macos_build.yml
     with:
@@ -43,7 +43,7 @@ jobs:
 
   # Upload the Artifacts
   upload_artifacts:
-    if: github.repository == 'PCSX2/pcsx2'
+    if: github.repository == 'LuminarLight/pcsx2-sanity'
     needs:
       - build_linux_qt
       - build_windows_qt
@@ -79,17 +79,17 @@ jobs:
           SCAN_DIR: ${{ github.WORKSPACE }}/ci-artifacts
           OUT_DIR: ${{ github.WORKSPACE }}/ci-artifacts/out
         run: |
-          gh release list --repo PCSX2/pcsx2
+          gh release list --repo LuminarLight/pcsx2-sanity
           mkdir -p ${{ github.WORKSPACE }}/ci-artifacts/out
           python ./.github/workflows/scripts/releases/rename-release-assets.py
           ls ${{ github.WORKSPACE }}/ci-artifacts/out
           TAG_VAL=$(echo ${{ github.REF }} | awk -F'refs/tags/' '{print $2}')
-          gh release upload "${TAG_VAL}" ${{ github.WORKSPACE }}/ci-artifacts/out/*  --repo PCSX2/pcsx2 --clobber
+          gh release upload "${TAG_VAL}" ${{ github.WORKSPACE }}/ci-artifacts/out/*  --repo LuminarLight/pcsx2-sanity --clobber
 
       - name: Publish Release
         env:
           GITHUB_TOKEN: ${{ secrets.BOT_PAT }}
         run: |
           TAG_VAL=$(echo ${{ github.REF }} | awk -F'refs/tags/' '{print $2}')
-          gh release edit ${TAG_VAL} --draft=false --repo PCSX2/pcsx2
+          gh release edit ${TAG_VAL} --draft=false --repo LuminarLight/pcsx2-sanity
 

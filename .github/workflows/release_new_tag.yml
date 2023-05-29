@@ -23,7 +23,7 @@ on:
 
 jobs:
   cut-release:
-    if: github.repository == 'PCSX2/pcsx2'
+    if: github.repository == 'LuminarLight/pcsx2-sanity'
     runs-on: ubuntu-latest
     name: "Create Tag and Release"
     steps:
@@ -51,8 +51,8 @@ jobs:
 
       - name: Generate Release Notes
         env:
-          OWNER: PCSX2
-          REPO: pcsx2
+          OWNER: LuminarLight
+          REPO: pcsx2-sanity
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           COMMIT_SHA: ${{ github.SHA }}
         run: |
