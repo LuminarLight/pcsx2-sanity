@@ -72,7 +72,7 @@
 
 #ifdef AUTO_UPDATER_SUPPORTED
 
-#define LATEST_RELEASE_URL "https://api.pcsx2.net/v1/%1Releases?pageSize=1"
+#define LATEST_RELEASE_URL "https://api.github.com/repos/LuminarLight/pcsx2-sanity/releases?pageSize=1"
 #define CHANGES_URL "https://api.github.com/repos/LuminarLight/pcsx2-sanity/compare/%1...%2"
 
 // Available release channels.
