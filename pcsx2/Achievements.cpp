@@ -414,11 +414,11 @@ std::string Achievements::GetUserAgent()
 {
 	std::string ret;
 	if (!PCSX2_isReleaseVersion && GIT_TAGGED_COMMIT)
-		ret = fmt::format("PCSX2 Sanity Nightly - {} ({})", GIT_TAG, GetOSVersionString());
+		ret = fmt::format("PCSX2-Sanity Nightly - {} ({})", GIT_TAG, GetOSVersionString());
 	else if (!PCSX2_isReleaseVersion)
-		ret = fmt::format("PCSX2 Sanity {} ({})", GIT_REV, GetOSVersionString());
+		ret = fmt::format("PCSX2-Sanity {} ({})", GIT_REV, GetOSVersionString());
 	else
-		ret = fmt::format("PCSX2 Sanity {}.{}.{}-{} ({})", PCSX2_VersionHi, PCSX2_VersionMid, PCSX2_VersionLo, SVN_REV, GetOSVersionString());
+		ret = fmt::format("PCSX2-Sanity {}.{}.{}-{} ({})", PCSX2_VersionHi, PCSX2_VersionMid, PCSX2_VersionLo, SVN_REV, GetOSVersionString());
 
 	return ret;
 }

@@ -1322,18 +1322,18 @@ QString QtHost::GetAppNameAndVersion()
 	QString ret;
 	if constexpr (!PCSX2_isReleaseVersion && GIT_TAGGED_COMMIT)
 	{
-		ret = QStringLiteral("PCSX2 Sanity Nightly - " GIT_TAG);
+		ret = QStringLiteral("PCSX2-Sanity Nightly - " GIT_TAG);
 	}
 	else if constexpr (PCSX2_isReleaseVersion)
 	{
 #define APPNAME_STRINGIZE(x) #x
 		ret = QStringLiteral(
-			"PCSX2 Sanity " APPNAME_STRINGIZE(PCSX2_VersionHi) "." APPNAME_STRINGIZE(PCSX2_VersionMid) "." APPNAME_STRINGIZE(PCSX2_VersionLo));
+			"PCSX2-Sanity " APPNAME_STRINGIZE(PCSX2_VersionHi) "." APPNAME_STRINGIZE(PCSX2_VersionMid) "." APPNAME_STRINGIZE(PCSX2_VersionLo));
 #undef APPNAME_STRINGIZE
 	}
 	else
 	{
-		return QStringLiteral("PCSX2 Sanity " GIT_REV);
+		return QStringLiteral("PCSX2-Sanity " GIT_REV);
 	}
 
 	return ret;

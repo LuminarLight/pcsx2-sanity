@@ -67,11 +67,11 @@ void SysLogMachineCaps()
 			// tagged commit - more modern implementation of dev build versioning
 			// - there is no need to include the commit - that is associated with the tag,
 			// - git is implied and the tag is timestamped
-			Console.WriteLn(Color_StrongGreen, "PCSX2 Sanity Nightly - %s Compiled on %s", GIT_TAG, __DATE__);
+			Console.WriteLn(Color_StrongGreen, "PCSX2-Sanity Nightly - %s Compiled on %s", GIT_TAG, __DATE__);
 		}
 		else
 		{
-			Console.WriteLn(Color_StrongGreen, "PCSX2 Sanity %u.%u.%u-%lld"
+			Console.WriteLn(Color_StrongGreen, "PCSX2-Sanity %u.%u.%u-%lld"
 #ifndef DISABLE_BUILD_DATE
 											   "- compiled on " __DATE__
 #endif
@@ -82,7 +82,7 @@ void SysLogMachineCaps()
 	}
 	else
 	{ // shorter release version string
-		Console.WriteLn(Color_StrongGreen, "PCSX2 Sanity %u.%u.%u-%lld"
+		Console.WriteLn(Color_StrongGreen, "PCSX2-Sanity %u.%u.%u-%lld"
 #ifndef DISABLE_BUILD_DATE
 										   "- compiled on " __DATE__
 #endif

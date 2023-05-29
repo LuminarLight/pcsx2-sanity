@@ -398,11 +398,11 @@ PINEServer::IPCBuffer PINEServer::ParseCommand(gsl::span<u8> buf, std::vector<u8
 				{
 					// tagged commit - more modern implementation of dev build versioning
 					// - there is no need to include the commit - that is associated with the tag, git is implied
-					version = fmt::format("PCSX2 Sanity Nightly - {}", GIT_TAG);
+					version = fmt::format("PCSX2-Sanity Nightly - {}", GIT_TAG);
 				}
 				else
 				{
-					version = fmt::format("PCSX2 Sanity {}.{}.{}-{}", PCSX2_VersionHi, PCSX2_VersionMid, PCSX2_VersionLo, SVN_REV);
+					version = fmt::format("PCSX2-Sanity {}.{}.{}-{}", PCSX2_VersionHi, PCSX2_VersionMid, PCSX2_VersionLo, SVN_REV);
 				}
 				const u32 size = version.size() + 1;
 				if (!SafetyChecks(buf_cnt, 0, ret_cnt, size + 4, buf_size))
