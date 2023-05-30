@@ -72,7 +72,7 @@
 
 #ifdef AUTO_UPDATER_SUPPORTED
 
-#define LATEST_RELEASE_URL "https://api.github.com/repos/LuminarLight/pcsx2-sanity/releases?pageSize=1"
+#define LATEST_RELEASE_URL "https://api.github.com/repos/LuminarLight/pcsx2-sanity/releases/latest"
 #define CHANGES_URL "https://api.github.com/repos/LuminarLight/pcsx2-sanity/compare/%1...%2"
 
 // Available release channels.
@@ -201,12 +201,8 @@ void AutoUpdaterDialog::getLatestReleaseComplete(QNetworkReply* reply)
 		const QByteArray reply_json(reply->readAll());
 		QJsonParseError parse_error;
 		QJsonDocument doc(QJsonDocument::fromJson(reply_json, &parse_error));
-		if (true/*doc.isObject()*/)
+		if (doc.isObject())
 		{
-			if (!doc.isObject())
-			{
-				doc = doc[0];
-			}
 			const QJsonObject doc_object(doc.object());
 			const QJsonArray data_array(doc_object["data"].toArray());
 			if (!data_array.isEmpty())
