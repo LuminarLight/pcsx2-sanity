@@ -16818,6 +16818,9 @@ SLES-52942:
 SLES-52943:
   name: "ESPN NFL 2K5"
   region: "PAL-E"
+  gsHWFixes:
+    mipmap: 2 # Mipmap + trilinear, improves textures to match sw renderer.
+    trilinearFiltering: 1
   patches:
     7D5403E1:
       content: |-
@@ -28887,6 +28890,8 @@ SLPM-65010:
   compat: 5
   gsHWFixes:
     texturePreloading: 1 # Performs much better with partial preload.
+  gameFixes:
+    - SoftwareRendererFMVHack # Fixes FMVs.
 SLPM-65011:
   name: "GUITAR FREAKS 3rd MIX & drummania 2nd MIX"
   region: "NTSC-J"
@@ -34355,6 +34360,10 @@ SLPM-66500:
 SLPM-66501:
   name: "Onimusha [Mega Hits]"
   region: "NTSC-J"
+  gsHWFixes:
+    texturePreloading: 1 # Performs much better with partial preload.
+  gameFixes:
+    - SoftwareRendererFMVHack # Fixes FMVs.
 SLPM-66502:
   name: "Devil May Cry [Mega Hits]"
   region: "NTSC-J"
@@ -36262,6 +36271,8 @@ SLPM-67507:
   region: "NTSC-K"
   gsHWFixes:
     texturePreloading: 1 # Performs much better with partial preload.
+  gameFixes:
+    - SoftwareRendererFMVHack # Fixes FMVs.
 SLPM-67508:
   name: "Gitaroo Man"
   region: "NTSC-K"
@@ -36536,6 +36547,8 @@ SLPM-74206:
   region: "NTSC-J"
   gsHWFixes:
     texturePreloading: 1 # Performs much better with partial preload.
+  gameFixes:
+    - SoftwareRendererFMVHack # Fixes FMVs.
 SLPM-74208:
   name: "Tengai Makyou 2 - Manjimaru [PlayStation 2 The Best]"
   region: "NTSC-J"
@@ -42506,6 +42519,8 @@ SLUS-20018:
   compat: 5
   gsHWFixes:
     texturePreloading: 1 # Performs much better with partial preload.
+  gameFixes:
+    - SoftwareRendererFMVHack # Fixes FMVs.
 SLUS-20021:
   name: "Kengo - Master of Bushido"
   region: "NTSC-U"
@@ -46680,6 +46695,9 @@ SLUS-20919:
   name: "ESPN - NFL 2K5"
   region: "NTSC-U"
   compat: 5
+  gsHWFixes:
+    mipmap: 2 # Mipmap + trilinear, improves textures to match sw renderer.
+    trilinearFiltering: 1
   patches:
     42F9D5AF:
       content: |-
