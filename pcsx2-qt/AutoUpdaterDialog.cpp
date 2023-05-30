@@ -247,7 +247,6 @@ void AutoUpdaterDialog::getLatestReleaseComplete(QNetworkReply* reply)
 				m_download_url = best_asset["browser_download_url"].toString();
 				found_update_info = true;
 			}
-
 		}
 		else
 		{
