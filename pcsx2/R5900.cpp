@@ -582,6 +582,8 @@ void eeGameStarting()
 		VMManager::Internal::GameStartingOnCPUThread();
 		if (VMManager::Internal::IsExecutionInterrupted())
 			Cpu->ExitExecution();
+
+		vtlb_VMap(0x02000000, 0x02000000, 0x06000000);
 	}
 	else
 	{
