@@ -1,3 +1,18 @@
+# PCSX2-Sanity
+
+A modified build of PCSX2 that incorporates changes that would be rejected from the parent repository.
+
+If you have any changes that you think would improve the emulator but would get rejected (or did already get rejected) from the parent repository, feel free to open a pull request, or contact the maintainer of pcsx2-sanity: [LuminarLight](https://github.com/LuminarLight)
+
+### Current divergences from parent repository
+- Included 'Sanity' in the application's name at most places.
+- Reworked the auto-updater. It longer relies on the PCSX2 website, instead it now relies only on GitHub. This gives us full independence.
+- Integrated memory-increasing changes from the [128MB Build](https://github.com/xTVaser/pcsx2-rr/tree/128mb-build) of PCSX2, which means that we have 128MB EE memory now. This shouldn't impact games that don't use it.
+
+
+And here is the parent's README:
+---
+
 # PCSX2
 
 ![Windows Build Status](https://img.shields.io/github/actions/workflow/status/PCSX2/pcsx2/windows_build_matrix.yml?label=%F0%9F%96%A5%EF%B8%8F%20Windows%20Builds)
