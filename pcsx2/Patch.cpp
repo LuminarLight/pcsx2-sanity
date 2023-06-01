@@ -129,6 +129,7 @@ namespace Patch
 	// Name of patches which will be auto-enabled based on global options.
 	static constexpr std::string_view WS_PATCH_NAME = "Widescreen 16:9";
 	static constexpr std::string_view NI_PATCH_NAME = "No-Interlacing";
+	static constexpr std::string_view TOOL_PATCH_NAME = "TOOL";
 	static constexpr std::string_view PATCHES_ZIP_NAME = "patches.zip";
 
 	const char* PATCHES_CONFIG_SECTION = "Patches";

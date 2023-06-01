@@ -1244,6 +1244,7 @@ struct Pcsx2Config
 		EnablePINE : 1, // enables inter-process communication
 		EnableWideScreenPatches : 1,
 		EnableNoInterlacingPatches : 1,
+		EnableToolMode : 1,
 		// TODO - Vaser - where are these settings exposed in the Qt UI?
 		EnableRecordingTools : 1,
 		EnableGameFixes : 1, // enables automatic game fixes

@@ -3104,6 +3104,8 @@ void FullscreenUI::DrawGraphicsSettingsPage()
 		"EnableWideScreenPatches", false);
 	DrawToggleSetting(bsi, "Enable No-Interlacing Patches", "Enables loading no-interlacing patches from pnach files.", "EmuCore",
 		"EnableNoInterlacingPatches", false);
+	DrawToggleSetting(bsi, "Enable TOOL Mode", "Enables TOOL patches to load for games, prevents other kinds of patches from loading.", "EmuCore",
+		"EnableToolMode", false);
 	DrawIntListSetting(bsi, "Bilinear Upscaling", "Smooths out the image when upscaling the console to the screen.", "EmuCore/GS",
 		"linear_present_mode", static_cast<int>(GSPostBilinearMode::BilinearSharp), s_bilinear_present_options,
 		std::size(s_bilinear_present_options));

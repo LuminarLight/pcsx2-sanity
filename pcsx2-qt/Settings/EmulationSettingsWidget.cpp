@@ -47,6 +47,7 @@ EmulationSettingsWidget::EmulationSettingsWidget(SettingsDialog* dialog, QWidget
 	SettingWidgetBinder::BindWidgetToBoolSetting(sif, m_ui.speedLimiter, "EmuCore/GS", "FrameLimitEnable", true);
 	SettingWidgetBinder::BindWidgetToIntSetting(sif, m_ui.maxFrameLatency, "EmuCore/GS", "VsyncQueueSize", DEFAULT_FRAME_LATENCY);
 	SettingWidgetBinder::BindWidgetToBoolSetting(sif, m_ui.syncToHostRefreshRate, "EmuCore/GS", "SyncToHostRefreshRate", false);
+	SettingWidgetBinder::BindWidgetToBoolSetting(sif, m_ui.toolMode, "EmuCore", "EnableToolMode", false);
 	connect(m_ui.optimalFramePacing, &QCheckBox::stateChanged, this, &EmulationSettingsWidget::onOptimalFramePacingChanged);
 	m_ui.optimalFramePacing->setTristate(dialog->isPerGameSettings());
 
@@ -154,6 +155,8 @@ EmulationSettingsWidget::EmulationSettingsWidget(SettingsDialog* dialog, QWidget
 		   "potentially increasing the emulation speed by less than 1%. Scale To Host Refresh Rate will not take effect if "
 		   "the console's refresh rate is too far from the host's refresh rate. Users with variable refresh rate displays "
 		   "should disable this option."));
+	dialog->registerWidgetHelp(m_ui.toolMode, tr("Enable TOOL Mode"), tr("Unchecked"),
+		tr("Automatically loads and applies TOOL patches on game start. Prevents other patches."));
 
 	updateOptimalFramePacing();
 }

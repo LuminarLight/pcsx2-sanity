@@ -1348,6 +1348,7 @@ void Pcsx2Config::LoadSave(SettingsWrapper& wrap)
 	SettingsWrapBitBool(EnablePINE);
 	SettingsWrapBitBool(EnableWideScreenPatches);
 	SettingsWrapBitBool(EnableNoInterlacingPatches);
+	SettingsWrapBitBool(EnableToolMode);
 	SettingsWrapBitBool(EnableRecordingTools);
 	SettingsWrapBitBool(EnableGameFixes);
 	SettingsWrapBitBool(SaveStateOnShutdown);
