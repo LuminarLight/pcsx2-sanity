@@ -322,6 +322,56 @@ int GetPS2ElfName( std::string& name )
 {
 	int retype = 0;
 
+	try
+	{
+		IsoFSCDVD isofs;
+		IsoFile file(isofs, "DRIVERS\\FIREWIRE.IRX;1");
+
+		int size = file.getLength();
+		if (size == 0)
+			goto diskinfo;
+
+		Console.Warning("(FIREWIRE.IRX) Found it, using this.");
+		name = "cdrom0:\\DRIVERS\\FIREWIRE.IRX;1";
+		return 2;
+	}
+	catch (Exception::FileNotFound& ex)
+	{
+		Console.Warning("(FIREWIRE.IRX) FileNotFound:" + ex.FormatDiagnosticMessage());
+		goto diskinfo;
+	}
+	catch (Exception::BadStream& ex)
+	{
+		Console.Warning("(FIREWIRE.IRX) BadStream:" + ex.FormatDiagnosticMessage());
+		goto diskinfo;
+	}
+
+	diskinfo:
+	try
+	{
+		IsoFSCDVD isofs;
+		IsoFile file(isofs, "DISKINFO.BIN;1");
+
+		int size = file.getLength();
+		if (size == 0)
+			goto systemcnf;
+
+		Console.Warning("(DISKINFO.BIN) Found it, using this.");
+		name = "cdrom0:\\DISKINFO.BIN;1";
+		return 2;
+	}
+	catch (Exception::FileNotFound& ex)
+	{
+		Console.Warning("(DISKINFO.BIN) FileNotFound:" + ex.FormatDiagnosticMessage());
+		goto systemcnf;
+	}
+	catch (Exception::BadStream& ex)
+	{
+		Console.Warning("(DISKINFO.BIN) BadStream:" + ex.FormatDiagnosticMessage());
+		goto systemcnf;
+	}
+
+	systemcnf: 
 	try {
 		IsoFSCDVD isofs;
 		IsoFile file( isofs, "SYSTEM.CNF;1");
