@@ -176,7 +176,10 @@ bool GameList::GetIsoSerialAndCRC(const std::string& path, s32* disc_type, std::
 	*disc_type = DoCDVDdetectDiskType();
 	cdvdReloadElfInfo();
 
-	*serial = DiscSerial;
+	if (!DiscSerial.empty())
+		*serial = DiscSerial;
+	else
+		*serial = "X";
 	*crc = ElfCRC;
 
 	DoCDVDclose();
