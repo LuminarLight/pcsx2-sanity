@@ -17,6 +17,7 @@ If you have any changes that you think would improve the emulator but would get 
 - Add the Jak debug mode pnach files. Need to rework them a bit for the new pnach format.
 - Prevent TOOL patches if not in TOOL Mode, and prevent non-TOOL patches if in TOOL Mode. When a Jak game is booted in Debug Mode, the memory changes significantly. So patches made for the game running in normal mode would likely corrupt the game when running in debug mode.
 - Properly get the serial even if we use FIREWIRE.IRX or DISKINFO.BIN as main ELF for an ISO.
+- Prevent non-labelled patches. This is PCSX2-Sanity, we can expect our users to adapt their pnach files. In most cases they just have to add one line to the top of the file.
 
 
 And here is the parent's README:
