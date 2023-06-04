@@ -5,7 +5,7 @@
   "description": "JSON Schema for PCSX2's GameDB",
   "type": "object",
   "patternProperties": {
-    "^[A-Z\\d]+-[A-Z\\d]+$": {
+    ".+": {
       "type": "object",
       "properties": {
         "name": {
