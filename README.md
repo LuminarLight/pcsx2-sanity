@@ -8,6 +8,15 @@ If you have any changes that you think would improve the emulator but would get 
 - Included 'Sanity' in the application's name at most places.
 - Reworked the auto-updater. It longer relies on the PCSX2 website, instead it now relies only on GitHub. This gives us full independence.
 - Integrated memory-increasing changes from the [128MB Build](https://github.com/xTVaser/pcsx2-rr/tree/128mb-build) of PCSX2, which means that we have 128MB EE memory now. This shouldn't impact games that don't use it.
+- Added a new setting, 'Enable TOOL Mode'. It can be used to change how the emulator behaves.
+- If a 'DRIVERS\FIREWIRE.IRX' or a 'DISKINFO.BIN' file exists on the disc, then it will be treated as the main ELF for booting and CRC purposes. If neither are found, the old behaviour will be used (looking up 'SYSTEM.CNF' and getting ELF path from there). This had to be done because in Jak pre-release builds, the "official" ELF is just a loader for these files, and this loader is usually fully identical between different pre-release builds of the same Jak game, which means they also have same CRC, making patches and everything impossible. But the FIREWIRE.IRX and DISKINFO.BIN files are (almost always) unique, allowing us to uniquely identify these builds.
+- Assign serial code 'X' to ISOs where we treat FIREWIRE.IRX or DISKINFO.BIN as the main ELF. Because per-game settings for some reason don't work if the serial is empty.
+- Cheats labelled as '[TOOL]' will always act enabled if TOOL Mode is enabled. This works similarly to widescreen and no-interlacing patches, where you can enable all with a global setting.
+
+### Plans/TODO:
+- Add the Jak debug mode pnach files. Need to rework them a bit for the new pnach format.
+- Prevent TOOL patches if not in TOOL Mode, and prevent non-TOOL patches if in TOOL Mode. When a Jak game is booted in Debug Mode, the memory changes significantly. So patches made for the game running in normal mode would likely corrupt the game when running in debug mode.
+- Properly get the serial even if we use FIREWIRE.IRX or DISKINFO.BIN as main ELF for an ISO.
 
 
 And here is the parent's README:
