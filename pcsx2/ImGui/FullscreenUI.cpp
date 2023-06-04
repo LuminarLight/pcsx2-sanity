@@ -4101,6 +4101,7 @@ void FullscreenUI::DrawFoldersSettingsPage()
 	DrawFolderSetting(bsi, ICON_FA_GAMEPAD " Input Profile Directory", "Folders", "InputProfiles", EmuFolders::InputProfiles);
 	DrawFolderSetting(bsi, ICON_FA_FROWN " Cheats Directory", "Folders", "Cheats", EmuFolders::Cheats);
 	DrawFolderSetting(bsi, ICON_FA_MAGIC " Patches Directory", "Folders", "Patches", EmuFolders::Patches);
+	DrawFolderSetting(bsi, ICON_FA_MAGIC " TOOL Patches Directory", "Folders", "ToolPatches", EmuFolders::ToolPatches);
 	DrawFolderSetting(bsi, ICON_FA_SLIDERS_H "Texture Replacements Directory", "Folders", "Textures", EmuFolders::Textures);
 	DrawFolderSetting(bsi, ICON_FA_SLIDERS_H "Video Dumping Directory", "Folders", "Videos", EmuFolders::Videos);
 

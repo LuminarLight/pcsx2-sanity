@@ -176,6 +176,7 @@ namespace Patch
 
 	const char* PATCHES_CONFIG_SECTION = "Patches";
 	const char* CHEATS_CONFIG_SECTION = "Cheats";
+	const char* TOOL_PATCHES_CONFIG_SECTION = "ToolPatches";
 	const char* PATCH_ENABLE_CONFIG_KEY = "Enable";
 
 	static zip_t* s_patches_zip;
@@ -337,6 +338,14 @@ std::vector<std::string> Patch::FindPatchFilesOnDisk(const std::string_view& ser
 
 	// and patches without serials
 	FileSystem::FindFiles(cheats ? EmuFolders::Cheats.c_str() : EmuFolders::Patches.c_str(),
+		GetPnachTemplate(serial, crc, false, true).c_str(), FILESYSTEM_FIND_FILES | FILESYSTEM_FIND_HIDDEN_FILES,
+		&files);
+	ret.reserve(ret.size() + files.size());
+	for (FILESYSTEM_FIND_DATA& fd : files)
+		ret.push_back(std::move(fd.FileName));
+
+	// TOOL Patches
+	FileSystem::FindFiles(EmuFolders::ToolPatches.c_str(),
 		GetPnachTemplate(serial, crc, false, true).c_str(), FILESYSTEM_FIND_FILES | FILESYSTEM_FIND_HIDDEN_FILES,
 		&files);
 	ret.reserve(ret.size() + files.size());

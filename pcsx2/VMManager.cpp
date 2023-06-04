@@ -495,6 +495,7 @@ void VMManager::Internal::UpdateEmuFolders()
 {
 	const std::string old_cheats_directory(EmuFolders::Cheats);
 	const std::string old_patches_directory(EmuFolders::Patches);
+	const std::string old_toolpatches_directory(EmuFolders::ToolPatches);
 	const std::string old_memcards_directory(EmuFolders::MemoryCards);
 	const std::string old_textures_directory(EmuFolders::Textures);
 	const std::string old_videos_directory(EmuFolders::Videos);
@@ -505,7 +506,7 @@ void VMManager::Internal::UpdateEmuFolders()
 
 	if (VMManager::HasValidVM())
 	{
-		if (EmuFolders::Cheats != old_cheats_directory || EmuFolders::Patches != old_patches_directory)
+		if (EmuFolders::Cheats != old_cheats_directory || EmuFolders::Patches != old_patches_directory || EmuFolders::ToolPatches != old_toolpatches_directory)
 			Patch::ReloadPatches(s_game_serial, s_game_crc, true, false, true);
 
 		if (EmuFolders::MemoryCards != old_memcards_directory)
