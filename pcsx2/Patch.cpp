@@ -281,7 +281,7 @@ u32 Patch::LoadPatchesFromString(PatchList* patch_list, const std::string& patch
 		LoadPatchLine(&current_patch_group, line);
 	}
 
-	if ((!current_patch_group.name.empty() || !current_patch_group.patches.empty()) && ((!EmuConfig.EnableToolMode && current_patch_group.name != TOOL_PATCHES_CONFIG_SECTION) || (EmuConfig.EnableToolMode && current_patch_group.name == TOOL_PATCHES_CONFIG_SECTION)))
+	if (!current_patch_group.name.empty() || !current_patch_group.patches.empty())
 		patch_list->push_back(std::move(current_patch_group));
 
 	return static_cast<u32>(patch_list->size() - before);
@@ -405,6 +405,7 @@ void Patch::ExtractPatchInfo(PatchInfoList* dst, const std::string& pnach_data, 
 			continue;
 
 		const bool has_patch = !current_patch.name.empty();
+
 
 		if (line.length() > 2 && line.front() == '[' && line.back() == ']')
 		{

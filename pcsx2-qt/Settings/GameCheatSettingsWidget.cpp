@@ -153,9 +153,6 @@ void GameCheatSettingsWidget::setStateRecursively(QTreeWidgetItem* parent, bool 
 
 void GameCheatSettingsWidget::reloadList()
 {
-	if (EmuConfig.EnableToolMode) // This is for the unlabelled cheats right? I hope. That is why why skip it in TOOL mode.
-		return;
-
 	u32 num_unlabelled_codes = 0;
 	m_patches = Patch::GetPatchInfo(m_serial, m_crc, true, &num_unlabelled_codes);
 	m_enabled_patches =
