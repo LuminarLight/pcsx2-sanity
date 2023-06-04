@@ -183,11 +183,13 @@ namespace Patch
 	static PatchList s_gamedb_patches;
 	static PatchList s_game_patches;
 	static PatchList s_cheat_patches;
+	static PatchList s_tool_patches;
 
 	static ActivePatchList s_active_patches;
 	static std::vector<DynamicPatch> s_active_dynamic_patches;
 	static EnablePatchList s_enabled_cheats;
 	static EnablePatchList s_enabled_patches;
+	static EnablePatchList s_enabled_tool_patches;
 	static u32 s_patches_crc;
 	static std::string s_patches_serial;
 	static std::optional<AspectRatioType> s_override_aspect_ratio;
@@ -279,7 +281,7 @@ u32 Patch::LoadPatchesFromString(PatchList* patch_list, const std::string& patch
 		LoadPatchLine(&current_patch_group, line);
 	}
 
-	if (!current_patch_group.name.empty() || !current_patch_group.patches.empty())
+	if ((!current_patch_group.name.empty() || !current_patch_group.patches.empty()) && ((!EmuConfig.EnableToolMode && current_patch_group.name != TOOL_PATCHES_CONFIG_SECTION) || (EmuConfig.EnableToolMode && current_patch_group.name == TOOL_PATCHES_CONFIG_SECTION)))
 		patch_list->push_back(std::move(current_patch_group));
 
 	return static_cast<u32>(patch_list->size() - before);
@@ -471,7 +473,7 @@ Patch::PatchInfoList Patch::GetPatchInfo(const std::string& serial, u32 crc, boo
 
 void Patch::ReloadEnabledLists()
 {
-	if (EmuConfig.EnableCheats && !Achievements::ChallengeModeActive())
+	if (EmuConfig.EnableCheats && !Achievements::ChallengeModeActive() && !EmuConfig.EnableToolMode)
 		s_enabled_cheats = Host::GetStringListSetting(CHEATS_CONFIG_SECTION, PATCH_ENABLE_CONFIG_KEY);
 	else
 		s_enabled_cheats = {};
@@ -479,7 +481,7 @@ void Patch::ReloadEnabledLists()
 	s_enabled_patches = Host::GetStringListSetting(PATCHES_CONFIG_SECTION, PATCH_ENABLE_CONFIG_KEY);
 
 	// Name based matching for widescreen/NI settings.
-	if (EmuConfig.EnableWideScreenPatches)
+	if (EmuConfig.EnableWideScreenPatches && !EmuConfig.EnableToolMode)
 	{
 		if (std::none_of(s_enabled_patches.begin(), s_enabled_patches.end(),
 				[](const std::string& it) { return (it == WS_PATCH_NAME); }))
@@ -487,12 +489,24 @@ void Patch::ReloadEnabledLists()
 			s_enabled_patches.emplace_back(WS_PATCH_NAME);
 		}
 	}
-	if (EmuConfig.EnableNoInterlacingPatches)
+	if (EmuConfig.EnableNoInterlacingPatches && !EmuConfig.EnableToolMode)
 	{
 		if (std::none_of(s_enabled_patches.begin(), s_enabled_patches.end(),
 				[](const std::string& it) { return (it == NI_PATCH_NAME); }))
 		{
 			s_enabled_patches.emplace_back(NI_PATCH_NAME);
+		}
+	}
+
+	s_enabled_tool_patches = Host::GetStringListSetting(TOOL_PATCHES_CONFIG_SECTION, PATCH_ENABLE_CONFIG_KEY);
+
+	// TOOL Patches
+	if (EmuConfig.EnableToolMode)
+	{
+		if (std::none_of(s_enabled_tool_patches.begin(), s_enabled_tool_patches.end(),
+				[](const std::string& it) { return (it == TOOL_PATCH_NAME); }))
+		{
+			s_enabled_tool_patches.emplace_back(TOOL_PATCH_NAME);
 		}
 	}
 }
@@ -578,6 +592,14 @@ void Patch::ReloadPatches(bool force_reload_files, bool reload_enabled_list, boo
 				if (patch_count > 0)
 					Console.WriteLn(Color_Green, fmt::format("Found {} cheats in {}.", patch_count, filename));
 			});
+
+		s_tool_patches.clear();
+		EnumeratePnachFiles(
+			s_patches_serial, s_patches_crc, true, [](const std::string& filename, const std::string& pnach_data) {
+				const u32 patch_count = LoadPatchesFromString(&s_tool_patches, pnach_data);
+				if (patch_count > 0)
+					Console.WriteLn(Color_Green, fmt::format("Found {} tool patches in {}.", patch_count, filename));
+			});
 	}
 
 	UpdateActivePatches(reload_enabled_list, verbose, false);
@@ -608,6 +630,10 @@ void Patch::UpdateActivePatches(bool reload_enabled_list, bool verbose, bool ver
 	const u32 c_count = EmuConfig.EnableCheats ? EnablePatches(s_cheat_patches, s_enabled_cheats) : 0;
 	if (c_count > 0)
 		fmt::format_to(std::back_inserter(message), "{}{} cheat patches", message.empty() ? "" : ", ", c_count);
+
+	const u32 t_count = EnablePatches(s_tool_patches, s_enabled_tool_patches);
+	if (t_count > 0)
+		fmt::format_to(std::back_inserter(message), "{}{} tool patches", message.empty() ? "" : ", ", t_count);
 
 	// Display message on first boot when we load patches.
 	if (verbose || (verbose_if_changed && prev_count != s_active_patches.size()))
@@ -690,6 +716,7 @@ void Patch::UnloadPatches()
 	s_enabled_cheats = {};
 	decltype(s_cheat_patches)().swap(s_cheat_patches);
 	decltype(s_game_patches)().swap(s_game_patches);
+	decltype(s_tool_patches)().swap(s_tool_patches);
 	decltype(s_gamedb_patches)().swap(s_gamedb_patches);
 }
 
