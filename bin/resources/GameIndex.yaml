@@ -29,6 +29,73 @@
 # https://github.com/PCSX2/pcsx2/blob/master/pcsx2/Docs/GameIndex.md
 
 # ---------------------------------------------
+# -- Jak Protos (by CRC), sorted by age
+# ---------------------------------------------
+
+3A84D099:
+  name: "Jak and Daxter - The Precursor Legacy [September 2001 Preview]"
+  region: "NTSC-U"
+  compat: 5
+  gsHWFixes:
+    mipmap: 2 # Fixes broken textures.
+    trilinearFiltering: 1 # Fixes water textures.
+    cpuSpriteRenderBW: 4 # Fixes character and water textures.
+    cpuSpriteRenderLevel: 2 # Needed for above.
+C6124FF2:
+  name: "Jak and Daxter - The Precursor Legacy [October 19 2001 Build]"
+  region: "NTSC-U"
+  compat: 5
+  gsHWFixes:
+    mipmap: 2 # Fixes broken textures.
+    trilinearFiltering: 1 # Fixes water textures.
+    cpuSpriteRenderBW: 4 # Fixes character and water textures.
+    cpuSpriteRenderLevel: 2 # Needed for above.
+4FF025AF:
+  name: "Jak II: Renegade [July 2003 Preview]"
+  region: "PAL"
+  compat: 5
+  gsHWFixes:
+    mipmap: 2 # Fixes broken textures.
+    trilinearFiltering: 1 # Fixes water textures.
+    cpuSpriteRenderBW: 4 # Fixes character and water textures.
+    cpuSpriteRenderLevel: 2 # Needed for above.
+    autoFlush: 2 # Fixes lighting.
+C71BAB1E:
+  name: "Jak II: Renegade [August 2003 Review]"
+  region: "PAL"
+  compat: 5
+  gsHWFixes:
+    mipmap: 2 # Fixes broken textures.
+    trilinearFiltering: 1 # Fixes water textures.
+    cpuSpriteRenderBW: 4 # Fixes character and water textures.
+    cpuSpriteRenderLevel: 2 # Needed for above.
+    autoFlush: 2 # Fixes lighting.
+3828BB66:
+  name: "Jak 3 [July 2004 Internal]"
+  region: "NTSC-U"
+  compat: 5
+  gameFixes:
+    - InstantDMAHack # Fixes holes in face geometry.
+  gsHWFixes:
+    mipmap: 2 # Fixes broken textures.
+    trilinearFiltering: 1 # Fixes water textures.
+    cpuSpriteRenderBW: 4 # Fixes character and water textures.
+    cpuSpriteRenderLevel: 2 # Needed for above.
+    autoFlush: 2 # Fixes lighting.
+A6630572:
+  name: "Jak 3 [September 2004 Preview]"
+  region: "PAL"
+  compat: 5
+  gameFixes:
+    - InstantDMAHack # Fixes holes in face geometry.
+  gsHWFixes:
+    mipmap: 2 # Fixes broken textures.
+    trilinearFiltering: 1 # Fixes water textures.
+    cpuSpriteRenderBW: 4 # Fixes character and water textures.
+    cpuSpriteRenderLevel: 2 # Needed for above.
+    autoFlush: 2 # Fixes lighting.
+
+# ---------------------------------------------
 # -- Game List
 # ---------------------------------------------
 
