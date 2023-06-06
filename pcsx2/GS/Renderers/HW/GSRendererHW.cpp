@@ -1667,8 +1667,15 @@ void GSRendererHW::Draw()
 		return;
 	}
 
+	// The rectangle of the draw rounded up.
+	const GSVector4 rect = m_vt.m_min.p.upld(m_vt.m_max.p + GSVector4::cxpr(0.5f));
+	m_r = GSVector4i(rect).rintersect(context->scissor.in);
+
+	const bool process_texture = PRIM->TME && !(PRIM->ABE && m_context->ALPHA.IsBlack() && !m_cached_ctx.TEX0.TCC);
+	const u32 frame_end_bp = GSLocalMemory::GetEndBlockAddress(m_cached_ctx.FRAME.Block(), m_cached_ctx.FRAME.FBW, m_cached_ctx.FRAME.PSM, m_r);
 	// SW CLUT Render enable.
 	bool force_preload = GSConfig.PreloadFrameWithGSData;
+	bool preload_uploads = false;
 	if (GSConfig.UserHacks_CPUCLUTRender > 0 || GSConfig.UserHacks_GPUTargetCLUTMode != GSGPUTargetCLUTMode::Disabled)
 	{
 		const CLUTDrawTestResult result = (GSConfig.UserHacks_CPUCLUTRender == 2) ? PossibleCLUTDrawAggressive() : PossibleCLUTDraw();
@@ -1693,10 +1700,12 @@ void GSRendererHW::Draw()
 			}
 		}
 	}
-
-	// The rectangle of the draw rounded up.
-	const GSVector4 rect = m_vt.m_min.p.upld(m_vt.m_max.p + GSVector4::cxpr(0.5f));
-	m_r = GSVector4i(rect).rintersect(context->scissor.in);
+	else if (((fm & fm_mask) != 0) || // Some channels masked
+		!IsDiscardingDstColor() || !PrimitiveCoversWithoutGaps() || // Using Dst Color or draw has gaps
+		(process_texture && m_cached_ctx.TEX0.TBP0 >= m_cached_ctx.FRAME.Block() && m_cached_ctx.TEX0.TBP0 < frame_end_bp)) // Tex is RT
+	{
+		preload_uploads = true;
+	}
 
 	if (!m_channel_shuffle && m_cached_ctx.FRAME.Block() == m_cached_ctx.TEX0.TBP0 &&
 		IsPossibleChannelShuffle())
@@ -1797,7 +1806,7 @@ void GSRendererHW::Draw()
 			// on. So, instead, let the draw go through with the expanded rectangle, and copy color->depth.
 			const bool is_zero_clear = (((GSLocalMemory::m_psm[m_cached_ctx.FRAME.PSM].fmt == 0) ?
 				m_vertex.buff[1].RGBAQ.U32[0] :
-				(m_vertex.buff[1].RGBAQ.U32[0] & ~0xFF000000)) == 0) && m_cached_ctx.FRAME.FBMSK == 0 && IsBlendedOrOpaque();
+				(m_vertex.buff[1].RGBAQ.U32[0] & ~0xFF000000)) == 0) && m_cached_ctx.FRAME.FBMSK == 0 && IsDiscardingDstColor();
 
 			const bool req_z = m_cached_ctx.FRAME.FBP != m_cached_ctx.ZBUF.ZBP && !m_cached_ctx.ZBUF.ZMSK;
 			bool no_target_found = false;
@@ -1843,7 +1852,6 @@ void GSRendererHW::Draw()
 	GSTextureCache::Source* src = nullptr;
 	TextureMinMaxResult tmm;
 
-	const bool process_texture = PRIM->TME && !(PRIM->ABE && m_context->ALPHA.IsBlack() && !m_cached_ctx.TEX0.TCC);
 	// Disable texture mapping if the blend is black and using alpha from vertex.
 	if (process_texture)
 	{
@@ -1964,9 +1972,13 @@ void GSRendererHW::Draw()
 
 	// Estimate size based on the scissor rectangle and height cache.
 	const GSVector2i t_size = GetTargetSize(src);
+	const GSVector4i t_size_rect = GSVector4i::loadh(t_size);
 
 	// Ensure draw rect is clamped to framebuffer size. Necessary for updating valid area.
-	m_r = m_r.rintersect(GSVector4i::loadh(t_size));
+	m_r = m_r.rintersect(t_size_rect);
+
+	// Ensure areas not drawn to are filled in by preloads. Test case: Okami
+	preload_uploads |= !m_r.eq(t_size_rect);
 
 	float target_scale = GetTextureScaleFactor();
 
@@ -1996,7 +2008,7 @@ void GSRendererHW::Draw()
 		const bool is_square = (t_size.y == t_size.x) && m_r.w >= 1023 && PrimitiveCoversWithoutGaps();
 		const bool is_clear = is_possible_mem_clear && is_square;
 		rt = g_texture_cache->LookupTarget(FRAME_TEX0, t_size, target_scale, GSTextureCache::RenderTarget, true,
-			fm, false, is_clear, force_preload);
+			fm, false, is_clear, force_preload, preload_uploads);
 
 		// Draw skipped because it was a clear and there was no target.
 		if (!rt)
@@ -2388,7 +2400,7 @@ void GSRendererHW::Draw()
 		return;
 	}
 
-	if (!GSConfig.UserHacks_DisableSafeFeatures && is_possible_mem_clear && IsBlendedOrOpaque())
+	if (!GSConfig.UserHacks_DisableSafeFeatures && is_possible_mem_clear && IsDiscardingDstColor())
 		OI_DoubleHalfClear(rt, ds);
 
 	// A couple of hack to avoid upscaling issue. So far it seems to impacts mostly sprite
@@ -5102,7 +5114,7 @@ void GSRendererHW::OI_DoubleHalfClear(GSTextureCache::Target*& rt, GSTextureCach
 			// Take the vertex colour, but check if the blending would make it black.
 			u32 vert_color = v[1].RGBAQ.U32[0];
 			if (PRIM->ABE && m_context->ALPHA.IsBlack())
-				vert_color &= ~0xFF000000;
+				vert_color &= 0xFF000000;
 			const u32 color = vert_color;
 			const bool clear_depth = (m_cached_ctx.FRAME.FBP > m_cached_ctx.ZBUF.ZBP);
 
@@ -5246,7 +5258,7 @@ bool GSRendererHW::OI_GsMemClear()
 		// Take the vertex colour, but check if the blending would make it black.
 		u32 vert_color = m_vertex.buff[1].RGBAQ.U32[0];
 		if (PRIM->ABE && m_context->ALPHA.IsBlack())
-			vert_color &= ~0xFF000000;
+			vert_color &= 0xFF000000;
 
 		OI_DoGsMemClear(off, r, vert_color);
 		return true;
@@ -5432,9 +5444,11 @@ bool GSRendererHW::OI_BlitFMV(GSTextureCache::Target* _rt, GSTextureCache::Sourc
 	// Nothing to see keep going
 	return true;
 }
-bool GSRendererHW::IsBlendedOrOpaque()
+
+bool GSRendererHW::IsDiscardingDstColor()
 {
-	return (!PRIM->ABE || IsOpaque() || m_context->ALPHA.IsCdOutput());
+	return (!PRIM->ABE || IsOpaque() || m_context->ALPHA.IsBlack()) && !m_cached_ctx.TEST.ATE &&
+		   !m_cached_ctx.TEST.DATE;
 }
 
 bool GSRendererHW::PrimitiveCoversWithoutGaps() const
@@ -5456,18 +5470,21 @@ bool GSRendererHW::PrimitiveCoversWithoutGaps() const
 	// Check that the height matches. Xenosaga 3 draws a letterbox around
 	// the FMV with a sprite at the top and bottom of the framebuffer.
 	const GSVertex* v = &m_vertex.buff[0];
-	const int first_dpY = v[1].XYZ.Y - v[0].XYZ.Y;
-	const int first_dpX = v[1].XYZ.X - v[0].XYZ.X;
+	const u32 first_dpY = v[1].XYZ.Y - v[0].XYZ.Y;
+	const u32 first_dpX = v[1].XYZ.X - v[0].XYZ.X;
 
 	// Horizontal Match.
 	if ((first_dpX >> 4) == m_r.z)
 	{
 		// Borrowed from MergeSprite() modified to calculate heights.
-		for (u32 i = 0; i < m_vertex.next; i += 2)
+		u32 last_pY = v[1].XYZ.Y;
+		for (u32 i = 2; i < m_vertex.next; i += 2)
 		{
-			const int dpY = v[i + 1].XYZ.Y - v[i].XYZ.Y;
-			if (dpY != first_dpY)
+			const u32 dpY = v[i + 1].XYZ.Y - v[i].XYZ.Y;
+			if (dpY != first_dpY || v[i].XYZ.Y != last_pY)
 				return false;
+
+			last_pY = v[i + 1].XYZ.Y;
 		}
 
 		return true;
@@ -5477,11 +5494,14 @@ bool GSRendererHW::PrimitiveCoversWithoutGaps() const
 	if ((first_dpY >> 4) == m_r.w)
 	{
 		// Borrowed from MergeSprite().
-		for (u32 i = 0; i < m_vertex.next; i += 2)
+		u32 last_pX = v[1].XYZ.X;
+		for (u32 i = 2; i < m_vertex.next; i += 2)
 		{
-			const int dpX = v[i + 1].XYZ.X - v[i].XYZ.X;
-			if (dpX != first_dpX)
+			const u32 dpX = v[i + 1].XYZ.X - v[i].XYZ.X;
+			if (dpX != first_dpX || v[i].XYZ.X != last_pX)
 				return false;
+
+			last_pX = v[i + 1].XYZ.X;
 		}
 
 		return true;
