@@ -515,7 +515,7 @@ void VMManager::Internal::UpdateEmuFolders()
 	if (VMManager::HasValidVM())
 	{
 		if (EmuFolders::Cheats != old_cheats_directory || EmuFolders::Patches != old_patches_directory || EmuFolders::ToolPatches != old_toolpatches_directory)
-			Patch::ReloadPatches(s_game_serial, s_game_crc, true, false, true);
+			Patch::ReloadPatches(s_game_serial, s_game_crc, true, false, true, true);
 
 		if (EmuFolders::MemoryCards != old_memcards_directory)
 		{
@@ -708,7 +708,9 @@ void VMManager::UpdateRunningGame(UpdateGameReason reason)
 		std::string memcardFilters;
 
 		if (s_game_crc == 0)
+		{
 			s_game_name = "Booting PS2 BIOS...";
+		}
 		else if (const GameDatabaseSchema::GameEntry* game = GameDatabase::findGame(s_game_serial))
 		{
 			if (!s_elf_override.empty())
@@ -717,6 +719,10 @@ void VMManager::UpdateRunningGame(UpdateGameReason reason)
 				s_game_name = game->name;
 
 			memcardFilters = game->memcardFiltersAsString();
+		}
+		else
+		{
+			Console.Warning(fmt::format("Serial '{}' not found in GameDB.", s_game_serial));
 		}
 
 		sioSetGameSerial(memcardFilters.empty() ? s_game_serial : memcardFilters);
@@ -734,7 +740,7 @@ void VMManager::UpdateRunningGame(UpdateGameReason reason)
 
 	// When resetting, patches need to get removed here, because there's no entry point being compiled.
 	if (reason == UpdateGameReason::Resetting || reason == UpdateGameReason::LoadingState)
-		Patch::ReloadPatches(s_game_serial, s_game_crc, false, false, false);	
+		Patch::ReloadPatches(s_game_serial, s_game_crc, false, false, false, false);
 
 	UpdateGameSettingsLayer();
 
@@ -1623,7 +1629,7 @@ void VMManager::Internal::EntryPointCompilingOnCPUThread()
 	// until the game entry point actually runs, because that can update settings, which
 	// can flush the JIT, etc. But we need to apply patches for games where the entry
 	// point is in the patch (e.g. WRC 4). So. Gross, but the only way to handle it really.
-	Patch::ReloadPatches(SysGetDiscID(), ElfCRC, false, false, false);
+	Patch::ReloadPatches(SysGetDiscID(), ElfCRC, false, false, false, true);
 	Patch::ApplyLoadedPatches(Patch::PPT_ONCE_ON_LOAD);
 }
 
