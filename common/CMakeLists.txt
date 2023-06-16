@@ -80,7 +80,6 @@ target_sources(common PRIVATE
 	LRUCache.h
 	HeapArray.h
 	HTTPDownloader.h
-	MemcpyFast.h
 	MemorySettingsInterface.h
 	MemsetFast.inl
 	MD5Digest.h
@@ -102,7 +101,6 @@ target_sources(common PRIVATE
 	TraceLog.h
 	WAVWriter.h
 	WindowInfo.h
-	emitter/cpudetect_internal.h
 	emitter/implement/dwshift.h
 	emitter/implement/group1.h
 	emitter/implement/group2.h
