@@ -66,6 +66,10 @@ struct SettingInfo
 	float FloatMinValue() const;
 	float FloatMaxValue() const;
 	float FloatStepValue() const;
+
+	void SetDefaultValue(SettingsInterface* si, const char* section, const char* key) const;
+	void CopyValue(SettingsInterface* dest_si, const SettingsInterface& src_si,
+		const char* section, const char* key) const;
 };
 
 enum class GenericInputBinding : u8;
@@ -1245,14 +1249,15 @@ struct Pcsx2Config
 		EnableWideScreenPatches : 1,
 		EnableNoInterlacingPatches : 1,
 		EnableToolMode : 1,
+		EnableFastBoot : 1,
+		EnableFastBootFastForward : 1,
+		EnablePerGameSettings : 1,
 		// TODO - Vaser - where are these settings exposed in the Qt UI?
 		EnableRecordingTools : 1,
 		EnableGameFixes : 1, // enables automatic game fixes
 		SaveStateOnShutdown : 1, // default value for saving state on shutdown
 		EnableDiscordPresence : 1, // enables discord rich presence integration
 		InhibitScreensaver : 1,
-		// when enabled uses BOOT2 injection, skipping sony bios splashes
-		UseBOOT2Injection : 1,
 		BackupSavestate : 1,
 		SavestateZstdCompression : 1,
 		// enables simulated ejection of memory cards when loading savestates

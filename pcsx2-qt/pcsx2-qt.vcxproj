@@ -39,6 +39,7 @@
       <AdditionalIncludeDirectories>%(AdditionalIncludeDirectories);$(SolutionDir)3rdparty\include</AdditionalIncludeDirectories>
       <AdditionalIncludeDirectories>%(AdditionalIncludeDirectories);$(SolutionDir)3rdparty\lzma\include</AdditionalIncludeDirectories>
       <AdditionalIncludeDirectories>%(AdditionalIncludeDirectories);$(SolutionDir)3rdparty\simpleini\include</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories>%(AdditionalIncludeDirectories);$(SolutionDir)3rdparty\imgui\include</AdditionalIncludeDirectories>
       <AdditionalIncludeDirectories>%(AdditionalIncludeDirectories);$(SolutionDir)3rdparty\demangler\include</AdditionalIncludeDirectories>
       <AdditionalIncludeDirectories>%(AdditionalIncludeDirectories);$(SolutionDir)3rdparty\rapidyaml\rapidyaml\ext\c4core\src\c4\ext\fast_float\include;%(AdditionalIncludeDirectories);</AdditionalIncludeDirectories>
       <AdditionalIncludeDirectories>%(AdditionalIncludeDirectories);$(SolutionDir)3rdparty\sdl2\include;$(SolutionDir)3rdparty\sdl2\SDL\include</AdditionalIncludeDirectories>
@@ -87,6 +88,7 @@
     <ClCompile Include="Settings\GameCheatSettingsWidget.cpp" />
     <ClCompile Include="Settings\GamePatchSettingsWidget.cpp" />
     <ClCompile Include="Settings\MemoryCardConvertWorker.cpp" />
+    <ClCompile Include="SetupWizardDialog.cpp" />
     <ClCompile Include="Themes.cpp" />
     <ClCompile Include="Tools\InputRecording\InputRecordingViewer.cpp" />
     <ClCompile Include="Tools\InputRecording\NewInputRecordingDlg.cpp" />
@@ -138,8 +140,10 @@
     </ClCompile>
     <ClCompile Include="QtKeyCodes.cpp" />
     <ClCompile Include="QtUtils.cpp" />
+    <ClCompile Include="Translations.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <QtMoc Include="SetupWizardDialog.h" />
     <QtMoc Include="Settings\InterfaceSettingsWidget.h" />
     <QtMoc Include="Settings\GameListSettingsWidget.h" />
     <QtMoc Include="Settings\BIOSSettingsWidget.h" />
@@ -251,6 +255,7 @@
     <ClCompile Include="$(IntDir)moc_MainWindow.cpp" />
     <ClCompile Include="$(IntDir)moc_QtHost.cpp" />
     <ClCompile Include="$(IntDir)moc_QtProgressCallback.cpp" />
+    <ClCompile Include="$(IntDir)moc_SetupWizardDialog.cpp" />
     <ClCompile Include="$(IntDir)Tools\InputRecording\moc_NewInputRecordingDlg.cpp" />
     <ClCompile Include="$(IntDir)Tools\InputRecording\moc_InputRecordingViewer.cpp" />
     <ClCompile Include="$(IntDir)qrc_resources.cpp">
@@ -365,6 +370,12 @@
     </QtUi>
   </ItemGroup>
   <ItemGroup>
+    <QtUi Include="SetupWizardDialog.ui">
+      <FileType>Document</FileType>
+    </QtUi>
+    <QtTs Include="Translations\pcsx2-qt_en.ts">
+      <FileType>Document</FileType>
+    </QtTs>
     <QtUi Include="Settings\DebugSettingsWidget.ui">
       <FileType>Document</FileType>
     </QtUi>

@@ -550,15 +550,15 @@ const char* USB::DeviceTypeIndexToName(s32 device)
 {
 	RegisterDevice& rd = RegisterDevice::instance();
 	const DeviceProxy* proxy = (device != DEVTYPE_NONE) ? rd.Device(device) : nullptr;
-	return proxy ? proxy->TypeName() : "None";
+	return proxy ? proxy->TypeName() : TRANSLATE("USB", "None");
 }
 
-std::vector<std::pair<std::string, std::string>> USB::GetDeviceTypes()
+std::vector<std::pair<const char*, const char*>> USB::GetDeviceTypes()
 {
 	RegisterDevice& rd = RegisterDevice::instance();
-	std::vector<std::pair<std::string, std::string>> ret;
+	std::vector<std::pair<const char*, const char*>> ret;
 	ret.reserve(rd.Map().size() + 1);
-	ret.emplace_back("None", "Not Connected");
+	ret.emplace_back("None", TRANSLATE("USB", "Not Connected"));
 	for (const auto& it : rd.Map())
 		ret.emplace_back(it.second->TypeName(), it.second->Name());
 	return ret;
@@ -567,7 +567,7 @@ std::vector<std::pair<std::string, std::string>> USB::GetDeviceTypes()
 const char* USB::GetDeviceName(const std::string_view& device)
 {
 	const DeviceProxy* dev = RegisterDevice::instance().Device(device);
-	return dev ? dev->Name() : "Not Connected";
+	return dev ? dev->Name() : TRANSLATE("USB", "Not Connected");
 }
 
 const char* USB::GetDeviceSubtypeName(const std::string_view& device, u32 subtype)
@@ -749,8 +749,8 @@ bool USB::MapDevice(SettingsInterface& si, u32 port, const std::vector<std::pair
 
 void USB::ClearPortBindings(SettingsInterface& si, u32 port)
 {
-	const std::string section(GetConfigSection(port));
-	const std::string type(GetConfigDevice(si, port));
+	const std::string section = GetConfigSection(port);
+	const std::string type = GetConfigDevice(si, port);
 	const u32 subtype = GetConfigSubType(si, port, type);
 	const DeviceProxy* dev = RegisterDevice::instance().Device(type);
 	if (!dev)
@@ -758,6 +758,47 @@ void USB::ClearPortBindings(SettingsInterface& si, u32 port)
 
 	for (const InputBindingInfo& bi : dev->Bindings(subtype))
 		si.DeleteValue(section.c_str(), GetConfigSubKey(type, bi.name).c_str());
+}
+
+void USB::CopyConfiguration(SettingsInterface* dest_si, const SettingsInterface& src_si,
+	bool copy_devices, bool copy_bindings)
+{
+	for (u32 port = 0; port < NUM_PORTS; port++)
+	{
+		const std::string section = GetConfigSection(port);
+		const std::string type = GetConfigDevice(src_si, port);
+		const u32 subtype = GetConfigSubType(src_si, port, type);
+		const DeviceProxy* dev = RegisterDevice::instance().Device(type);
+
+		if (copy_devices)
+		{
+			dest_si->CopyStringValue(src_si, section.c_str(), "Type");
+			if (dev)
+			{
+				dest_si->CopyUIntValue(src_si, section.c_str(), fmt::format("{}_subtype", type).c_str());
+
+				for (const SettingInfo& si : dev->Settings(subtype))
+					si.CopyValue(dest_si, src_si, section.c_str(), GetConfigSubKey(type, si.name).c_str());
+			}
+		}
+
+		if (copy_bindings && dev)
+		{
+			for (const InputBindingInfo& bi : dev->Bindings(subtype))
+				dest_si->CopyStringValue(src_si, section.c_str(), GetConfigSubKey(type, bi.name).c_str());
+		}
+	}
+}
+
+void USB::SetDefaultConfiguration(SettingsInterface* si)
+{
+	for (u32 port = 0; port < NUM_PORTS; port++)
+	{
+		const std::string section = GetConfigSection(port);
+
+		si->ClearSection(section.c_str());
+		si->SetStringValue(section.c_str(), "Type", "None");
+	}
 }
 
 void USB::CheckForConfigChanges(const Pcsx2Config& old_config)

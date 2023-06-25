@@ -220,13 +220,7 @@ bool GSRenderer::Merge(int field)
 		tex[0] = nullptr;
 	}
 
-	const GSVector4 c = GSVector4(
-							static_cast<int>(m_regs->BGCOLOR.R),
-							static_cast<int>(m_regs->BGCOLOR.G),
-							static_cast<int>(m_regs->BGCOLOR.B),
-							static_cast<int>(m_regs->PMODE.ALP)) /
-						255;
-
+	const u32 c = (m_regs->BGCOLOR.U32[0] & 0x00FFFFFFu) | (m_regs->PMODE.ALP << 24);
 	g_gs_device->Merge(tex, src_gs_read, dst, fs, m_regs->PMODE, m_regs->EXTBUF, c);
 
 	if (isReallyInterlaced() && GSConfig.InterlaceMode != GSInterlaceMode::Off)
@@ -431,22 +425,30 @@ static void CompressAndWriteScreenshot(std::string filename, u32 width, u32 heig
 
 	std::string key(fmt::format("GSScreenshot_{}", filename));
 
-	if(!GSDumpReplayer::IsRunner())
-		Host::AddIconOSDMessage(key, ICON_FA_CAMERA, fmt::format("Saving screenshot to '{}'.", Path::GetFileName(filename)), 60.0f);
+	if (!GSDumpReplayer::IsRunner())
+	{
+		Host::AddIconOSDMessage(key, ICON_FA_CAMERA,
+			fmt::format(TRANSLATE_SV("GS", "Saving screenshot to '{}'."), Path::GetFileName(filename)), 60.0f);
+	}
 
 	// maybe std::async would be better here.. but it's definitely worth threading, large screenshots take a while to compress.
 	std::unique_lock lock(s_screenshot_threads_mutex);
-	s_screenshot_threads.emplace_back([key = std::move(key), filename = std::move(filename), image = std::move(image), quality = GSConfig.ScreenshotQuality]() {
+	s_screenshot_threads.emplace_back([key = std::move(key), filename = std::move(filename), image = std::move(image),
+										  quality = GSConfig.ScreenshotQuality]() {
 		if (image.SaveToFile(filename.c_str(), quality))
 		{
-			if(!GSDumpReplayer::IsRunner())
+			if (!GSDumpReplayer::IsRunner())
+			{
 				Host::AddIconOSDMessage(std::move(key), ICON_FA_CAMERA,
-					fmt::format("Saved screenshot to '{}'.", Path::GetFileName(filename)), Host::OSD_INFO_DURATION);
+					fmt::format(TRANSLATE_SV("GS", "Saved screenshot to '{}'."), Path::GetFileName(filename)),
+					Host::OSD_INFO_DURATION);
+			}
 		}
 		else
 		{
 			Host::AddIconOSDMessage(std::move(key), ICON_FA_CAMERA,
-				fmt::format("Failed to save screenshot to '{}'.", Path::GetFileName(filename), Host::OSD_ERROR_DURATION));
+				fmt::format(TRANSLATE_SV("GS", "Failed to save screenshot to '{}'."), Path::GetFileName(filename),
+					Host::OSD_ERROR_DURATION));
 		}
 
 		// remove ourselves from the list, if the GS thread is waiting for us, we won't be in there
@@ -516,7 +518,7 @@ bool GSRenderer::BeginPresentFrame(bool frame_skip)
 
 	// First frame after reopening is definitely going to be trash, so skip it.
 	Host::AddIconOSDMessage("GSDeviceLost", ICON_FA_EXCLAMATION_TRIANGLE,
-		"Host GPU device encountered an error and was recovered. This may have broken rendering.",
+		TRANSLATE_SV("GS", "Host GPU device encountered an error and was recovered. This may have broken rendering."),
 		Host::OSD_CRITICAL_ERROR_DURATION);
 	return false;
 }
@@ -603,7 +605,7 @@ void GSRenderer::VSync(u32 field, bool registers_written, bool idle_frame)
 		src_uv = GSVector4(src_rect) / GSVector4(current->GetSize()).xyxy();
 		draw_rect = CalculateDrawDstRect(g_gs_device->GetWindowWidth(), g_gs_device->GetWindowHeight(),
 			src_rect, current->GetSize(), s_display_alignment, g_gs_device->UsesLowerLeftOrigin(),
-			GetVideoMode() == GSVideoMode::SDTV_480P || (GSConfig.PCRTCOverscan && GSConfig.PCRTCOffsets));
+			GetVideoMode() == GSVideoMode::SDTV_480P);
 		s_last_draw_rect = draw_rect;
 
 		if (GSConfig.CASMode != GSCASMode::Disabled)
@@ -620,7 +622,9 @@ void GSRenderer::VSync(u32 field, bool registers_written, bool idle_frame)
 			else if (!cas_log_once)
 			{
 				Host::AddIconOSDMessage("CASUnsupported", ICON_FA_EXCLAMATION_TRIANGLE,
-					"CAS is not available, your graphics driver does not support the required functionality.", 10.0f);
+					TRANSLATE_SV("GS",
+						"CAS is not available, your graphics driver does not support the required functionality."),
+					10.0f);
 				cas_log_once = true;
 			}
 		}
@@ -667,7 +671,7 @@ void GSRenderer::VSync(u32 field, bool registers_written, bool idle_frame)
 			std::string_view compression_str;
 			if (GSConfig.GSDumpCompression == GSDumpCompressionMethod::Uncompressed)
 			{
-				m_dump = std::unique_ptr<GSDumpBase>(new GSDumpUncompressed(m_snapshot, VMManager::GetGameSerial(), m_crc,
+				m_dump = std::unique_ptr<GSDumpBase>(new GSDumpUncompressed(m_snapshot, VMManager::GetDiscSerial(), m_crc,
 					screenshot_width, screenshot_height,
 					screenshot_pixels.empty() ? nullptr : screenshot_pixels.data(),
 					fd, m_regs));
@@ -675,7 +679,7 @@ void GSRenderer::VSync(u32 field, bool registers_written, bool idle_frame)
 			}
 			else if (GSConfig.GSDumpCompression == GSDumpCompressionMethod::LZMA)
 			{
-				m_dump = std::unique_ptr<GSDumpBase>(new GSDumpXz(m_snapshot, VMManager::GetGameSerial(), m_crc,
+				m_dump = std::unique_ptr<GSDumpBase>(new GSDumpXz(m_snapshot, VMManager::GetDiscSerial(), m_crc,
 					screenshot_width, screenshot_height,
 					screenshot_pixels.empty() ? nullptr : screenshot_pixels.data(),
 					fd, m_regs));
@@ -683,7 +687,7 @@ void GSRenderer::VSync(u32 field, bool registers_written, bool idle_frame)
 			}
 			else
 			{
-				m_dump = std::unique_ptr<GSDumpBase>(new GSDumpZst(m_snapshot, VMManager::GetGameSerial(), m_crc,
+				m_dump = std::unique_ptr<GSDumpBase>(new GSDumpZst(m_snapshot, VMManager::GetDiscSerial(), m_crc,
 					screenshot_width, screenshot_height,
 					screenshot_pixels.empty() ? nullptr : screenshot_pixels.data(),
 					fd, m_regs));
@@ -692,9 +696,11 @@ void GSRenderer::VSync(u32 field, bool registers_written, bool idle_frame)
 
 			delete[] fd.data;
 
-			Host::AddKeyedOSDMessage("GSDump", fmt::format("Saving {0} GS dump {1} to '{2}'",
-				(m_dump_frames == 1) ? "single frame" : "multi-frame", compression_str,
-				Path::GetFileName(m_dump->GetPath())), Host::OSD_INFO_DURATION);
+			Host::AddKeyedOSDMessage("GSDump",
+				fmt::format(TRANSLATE_SV("GS", "Saving {0} GS dump {1} to '{2}'"),
+					(m_dump_frames == 1) ? "single frame" : "multi-frame", compression_str,
+					Path::GetFileName(m_dump->GetPath())),
+				Host::OSD_INFO_DURATION);
 		}
 
 		const bool internal_resolution = (GSConfig.ScreenshotSize >= GSScreenshotSize::InternalResolution);
@@ -711,7 +717,8 @@ void GSRenderer::VSync(u32 field, bool registers_written, bool idle_frame)
 		}
 		else
 		{
-			Host::AddIconOSDMessage("GSScreenshot", ICON_FA_CAMERA, "Failed to render/download screenshot.", Host::OSD_ERROR_DURATION);
+			Host::AddIconOSDMessage("GSScreenshot", ICON_FA_CAMERA,
+				TRANSLATE_SV("GS", "Failed to render/download screenshot."), Host::OSD_ERROR_DURATION);
 		}
 
 		m_snapshot = {};
@@ -721,7 +728,9 @@ void GSRenderer::VSync(u32 field, bool registers_written, bool idle_frame)
 		const bool last = (m_dump_frames == 0);
 		if (m_dump->VSync(field, last, m_regs))
 		{
-			Host::AddKeyedOSDMessage("GSDump", fmt::format("Saved GS dump to '{}'.", Path::GetFileName(m_dump->GetPath())), Host::OSD_INFO_DURATION);
+			Host::AddKeyedOSDMessage("GSDump",
+				fmt::format(TRANSLATE_SV("GS", "Saved GS dump to '{}'."), Path::GetFileName(m_dump->GetPath())),
+				Host::OSD_INFO_DURATION);
 			m_dump.reset();
 		}
 		else if (!last)
@@ -780,14 +789,14 @@ static std::string GSGetBaseFilename()
 	std::string filename;
 
 	// append the game serial and title
-	if (std::string name(VMManager::GetGameName()); !name.empty())
+	if (std::string name(VMManager::GetTitle()); !name.empty())
 	{
 		Path::SanitizeFileName(&name);
 		if (name.length() > 219)
 			name.resize(219);
 		filename += name;
 	}
-	if (std::string serial(VMManager::GetGameSerial()); !serial.empty())
+	if (std::string serial = VMManager::GetDiscSerial(); !serial.empty())
 	{
 		Path::SanitizeFileName(&serial);
 		filename += '_';
@@ -850,7 +859,7 @@ void GSRenderer::PresentCurrentFrame()
 			const GSVector4 src_uv(GSVector4(src_rect) / GSVector4(current->GetSize()).xyxy());
 			const GSVector4 draw_rect(CalculateDrawDstRect(g_gs_device->GetWindowWidth(), g_gs_device->GetWindowHeight(),
 				src_rect, current->GetSize(), s_display_alignment, g_gs_device->UsesLowerLeftOrigin(),
-				GetVideoMode() == GSVideoMode::SDTV_480P || (GSConfig.PCRTCOverscan && GSConfig.PCRTCOffsets)));
+				GetVideoMode() == GSVideoMode::SDTV_480P));
 			s_last_draw_rect = draw_rect;
 
 			const u64 current_time = Common::Timer::GetCurrentValue();
@@ -893,7 +902,7 @@ bool GSRenderer::BeginCapture(std::string filename)
 											GSVector2i(GSConfig.VideoCaptureWidth, GSConfig.VideoCaptureHeight));
 
 	return GSCapture::BeginCapture(GetTvRefreshRate(), capture_resolution,
-		GetCurrentAspectRatioFloat(GetVideoMode() == GSVideoMode::SDTV_480P || (GSConfig.PCRTCOverscan && GSConfig.PCRTCOffsets)),
+		GetCurrentAspectRatioFloat(GetVideoMode() == GSVideoMode::SDTV_480P),
 		std::move(filename));
 }
 
@@ -927,7 +936,7 @@ bool GSRenderer::SaveSnapshotToMemory(u32 window_width, u32 window_height, bool 
 	const GSVector4i src_rect(CalculateDrawSrcRect(current));
 	const GSVector4 src_uv(GSVector4(src_rect) / GSVector4(current->GetSize()).xyxy());
 
-	const bool is_progressive = (GetVideoMode() == GSVideoMode::SDTV_480P || (GSConfig.PCRTCOverscan && GSConfig.PCRTCOffsets));
+	const bool is_progressive = (GetVideoMode() == GSVideoMode::SDTV_480P);
 	GSVector4 draw_rect;
 	if (window_width == 0 || window_height == 0)
 	{

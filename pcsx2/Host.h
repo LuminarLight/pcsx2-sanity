@@ -17,6 +17,8 @@
 
 #include "common/Pcsx2Defs.h"
 
+#include "fmt/format.h"
+
 #include <ctime>
 #include <functional>
 #include <mutex>
@@ -48,12 +50,26 @@ namespace Host
 	/// Returns the modified time of a resource.
 	std::optional<std::time_t> GetResourceFileTimestamp(const char* filename);
 
+	/// Returns a localized version of the specified string within the specified context.
+	/// The pointer is guaranteed to be valid until the next language change.
+	const char* TranslateToCString(const std::string_view& context, const std::string_view& msg);
+
+	/// Returns a localized version of the specified string within the specified context.
+	/// The view is guaranteed to be valid until the next language change.
+	/// NOTE: When passing this to fmt, positional arguments should be used in the base string, as
+	/// not all locales follow the same word ordering.
+	std::string_view TranslateToStringView(const std::string_view& context, const std::string_view& msg);
+
+	/// Returns a localized version of the specified string within the specified context.
+	std::string TranslateToString(const std::string_view& context, const std::string_view& msg);
+
+	/// Clears the translation cache. All previously used strings should be considered invalid.
+	void ClearTranslationCache();
+
 	/// Adds OSD messages, duration is in seconds.
 	void AddOSDMessage(std::string message, float duration = 2.0f);
 	void AddKeyedOSDMessage(std::string key, std::string message, float duration = 2.0f);
 	void AddIconOSDMessage(std::string key, const char* icon, const std::string_view& message, float duration = 2.0f);
-	void AddFormattedOSDMessage(float duration, const char* format, ...);
-	void AddKeyedFormattedOSDMessage(std::string key, float duration, const char* format, ...);
 	void RemoveKeyedOSDMessage(std::string key);
 	void ClearOSDMessages();
 
@@ -155,5 +171,16 @@ namespace Host
 
 		/// Sets the input profile settings layer. Called by VMManager when the game changes.
 		void SetInputSettingsLayer(SettingsInterface* sif);
+
+		/// Implementation to retrieve a translated string.
+		s32 GetTranslatedStringImpl(const std::string_view& context, const std::string_view& msg, char* tbuf, size_t tbuf_space);
 	} // namespace Internal
 } // namespace Host
+
+// Helper macros for retrieving translated strings.
+#define TRANSLATE(context, msg) Host::TranslateToCString(context, msg)
+#define TRANSLATE_SV(context, msg) Host::TranslateToStringView(context, msg)
+#define TRANSLATE_STR(context, msg) Host::TranslateToString(context, msg)
+
+// Does not translate the string at runtime, but allows the UI to in its own way.
+#define TRANSLATE_NOOP(context, msg) msg

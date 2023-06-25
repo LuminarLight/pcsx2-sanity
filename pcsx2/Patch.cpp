@@ -191,7 +191,6 @@ namespace Patch
 	static EnablePatchList s_enabled_patches;
 	static EnablePatchList s_enabled_tool_patches;
 	static u32 s_patches_crc;
-	static std::string s_patches_serial;
 	static std::optional<AspectRatioType> s_override_aspect_ratio;
 	static std::optional<GSInterlaceMode> s_override_interlace_mode;
 
@@ -302,7 +301,8 @@ bool Patch::OpenPatchesZip()
 		if (!warning_shown)
 		{
 			Host::AddIconOSDMessage("PatchesZipOpenWarning", ICON_FA_MICROCHIP,
-				fmt::format("Failed to open {}. Built-in game patches are not available.", PATCHES_ZIP_NAME),
+				fmt::format(TRANSLATE_SV("Patch", "Failed to open {}. Built-in game patches are not available."),
+					PATCHES_ZIP_NAME),
 				Host::OSD_ERROR_DURATION);
 			warning_shown = true;
 		}
@@ -457,7 +457,7 @@ std::string_view Patch::PatchInfo::GetNameParentPart() const
 	return ret;
 }
 
-Patch::PatchInfoList Patch::GetPatchInfo(const std::string& serial, u32 crc, bool cheats, u32* num_unlabelled_patches)
+Patch::PatchInfoList Patch::GetPatchInfo(const std::string_view& serial, u32 crc, bool cheats, u32* num_unlabelled_patches)
 {
 	PatchInfoList ret;
 
@@ -545,18 +545,17 @@ u32 Patch::EnablePatches(const PatchList& patches, const EnablePatchList& enable
 	return count;
 }
 
-void Patch::ReloadPatches(std::string serial, u32 crc, bool force_reload_files, bool reload_enabled_list, bool verbose, bool verbose_if_changed)
+void Patch::ReloadPatches(const std::string& serial, u32 crc, bool reload_files, bool reload_enabled_list, bool verbose,
+	bool verbose_if_changed)
 {
-	const bool serial_changed = (s_patches_serial != serial);
+	reload_files |= (s_patches_crc != crc);
 	s_patches_crc = crc;
-	s_patches_serial = std::move(serial);
 
-	// Skip reloading gamedb patches if the serial hasn't changed.
-	if (serial_changed)
+	if (reload_files)
 	{
 		s_gamedb_patches.clear();
 
-		const GameDatabaseSchema::GameEntry* game = GameDatabase::findGame(s_patches_serial);
+		const GameDatabaseSchema::GameEntry* game = GameDatabase::findGame(serial);
 		if (game)
 		{
 			const std::string* patches = game->findPatch(crc);
@@ -569,18 +568,10 @@ void Patch::ReloadPatches(std::string serial, u32 crc, bool force_reload_files, 
 
 			LoadDynamicPatches(game->dynaPatches);
 		}
-	}
 
-	ReloadPatches(serial_changed, reload_enabled_list, verbose, verbose_if_changed);
-}
-
-void Patch::ReloadPatches(bool force_reload_files, bool reload_enabled_list, bool verbose, bool verbose_if_changed)
-{
-	if (force_reload_files)
-	{
 		s_game_patches.clear();
 		EnumeratePnachFiles(
-			s_patches_serial, s_patches_crc, false, false, [](const std::string& filename, const std::string& pnach_data) {
+			serial, s_patches_crc, false, false, [](const std::string& filename, const std::string& pnach_data) {
 				const u32 patch_count = LoadPatchesFromString(&s_game_patches, pnach_data);
 				if (patch_count > 0)
 					Console.WriteLn(Color_Green, fmt::format("Found {} game patches in {}.", patch_count, filename));
@@ -588,7 +579,7 @@ void Patch::ReloadPatches(bool force_reload_files, bool reload_enabled_list, boo
 
 		s_cheat_patches.clear();
 		EnumeratePnachFiles(
-			s_patches_serial, s_patches_crc, true, false, [](const std::string& filename, const std::string& pnach_data) {
+			serial, s_patches_crc, true, false, [](const std::string& filename, const std::string& pnach_data) {
 				const u32 patch_count = LoadPatchesFromString(&s_cheat_patches, pnach_data);
 				if (patch_count > 0)
 					Console.WriteLn(Color_Green, fmt::format("Found {} cheats in {}.", patch_count, filename));
@@ -617,37 +608,47 @@ void Patch::UpdateActivePatches(bool reload_enabled_list, bool verbose, bool ver
 	s_override_interlace_mode.reset();
 
 	std::string message;
+	u32 gp_count = 0;
 	if (EmuConfig.EnablePatches)
 	{
-		const u32 gp_count = EnablePatches(s_gamedb_patches, EnablePatchList());
+		gp_count = EnablePatches(s_gamedb_patches, EnablePatchList());
 		if (gp_count > 0)
-			fmt::format_to(std::back_inserter(message), "{} GameDB patches", gp_count);
+			fmt::format_to(std::back_inserter(message), TRANSLATE_SV("Patch", "{} GameDB patches"), gp_count);
 	}
 
 	const u32 p_count = EnablePatches(s_game_patches, s_enabled_patches);
 	if (p_count > 0)
-		fmt::format_to(std::back_inserter(message), "{}{} game patches", message.empty() ? "" : ", ", p_count);
+	{
+		fmt::format_to(std::back_inserter(message), TRANSLATE_SV("Patch", "{}{} game patches"),
+			message.empty() ? "" : ", ", p_count);
+	}
 
 	const u32 c_count = EmuConfig.EnableCheats ? EnablePatches(s_cheat_patches, s_enabled_cheats) : 0;
 	if (c_count > 0)
-		fmt::format_to(std::back_inserter(message), "{}{} cheat patches", message.empty() ? "" : ", ", c_count);
+	{
+		fmt::format_to(std::back_inserter(message), TRANSLATE_SV("Patch", "{}{} cheat patches"),
+			message.empty() ? "" : ", ", c_count);
+	}
 
 	const u32 t_count = EnablePatches(s_tool_patches, s_enabled_tool_patches);
 	if (t_count > 0)
 		fmt::format_to(std::back_inserter(message), "{}{} tool patches", message.empty() ? "" : ", ", t_count);
 
 	// Display message on first boot when we load patches.
-	if (verbose || (verbose_if_changed && prev_count != s_active_patches.size()))
+	// Except when it's just GameDB.
+	const bool just_gamedb = (p_count == 0 && c_count == 0 && gp_count > 0);
+	if (verbose || (verbose_if_changed && prev_count != s_active_patches.size() && !just_gamedb))
 	{
 		if (!message.empty())
 		{
-			fmt::format_to(std::back_inserter(message), " are active.");
-			Host::AddIconOSDMessage("LoadPatches", ICON_FA_FILE_CODE, std::move(message), Host::OSD_INFO_DURATION);
+			Host::AddIconOSDMessage("LoadPatches", ICON_FA_FILE_CODE,
+				fmt::format(TRANSLATE_SV("Patch", "{} are active."), message), Host::OSD_INFO_DURATION);
 		}
 		else
 		{
 			Host::AddIconOSDMessage("LoadPatches", ICON_FA_FILE_CODE,
-				"No cheats or patches (widescreen, compatibility or others) are found / enabled.",
+				TRANSLATE_STR(
+					"Patch", "No cheats or patches (widescreen, compatibility or others) are found / enabled."),
 				Host::OSD_INFO_DURATION);
 		}
 	}
@@ -710,7 +711,6 @@ void Patch::UnloadPatches()
 	s_override_interlace_mode = {};
 	s_override_aspect_ratio = {};
 	s_patches_crc = 0;
-	s_patches_serial = {};
 	s_active_patches = {};
 	s_active_dynamic_patches = {};
 	s_enabled_patches = {};

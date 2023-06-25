@@ -135,7 +135,7 @@ bool GSHwHack::GSC_SacredBlaze(GSRendererHW& r, int& skip)
 		if ((RFBP == 0x2680 || RFBP == 0x26c0 || RFBP == 0x2780 || RFBP == 0x2880 || RFBP == 0x2a80) && RTPSM == PSMCT32 && RFBW <= 2 &&
 			(!RTME || (RTBP0 == 0x0 || RTBP0 == 0xe00 || RTBP0 == 0x3e00)))
 		{
-			r.SwPrimRender(r, RTBP0 > 0x1000);
+			r.SwPrimRender(r, RTBP0 > 0x1000, false);
 			skip = 1;
 		}
 	}
@@ -215,7 +215,7 @@ bool GSHwHack::GSC_Tekken5(GSRendererHW& r, int& skip)
 
 bool GSHwHack::GSC_BurnoutGames(GSRendererHW& r, int& skip)
 {
-	if (RFBW == 2 && std::abs(static_cast<int>(RFBP) - static_cast<int>(RZBP)) <= static_cast<int>(BLOCKS_PER_PAGE))
+	if (RFBW == 2 && std::abs(static_cast<int>(RFBP) - static_cast<int>(RZBP)) <= static_cast<int>(BLOCKS_PER_PAGE) && (!RTME || RTPSM != PSMT8))
 	{
 		skip = 2;
 		return true;
@@ -253,7 +253,7 @@ bool GSHwHack::GSC_BlackAndBurnoutSky(GSRendererHW& r, int& skip)
 			// the clouds on top of the sky at each frame.
 			// Burnout 3 PAL 50Hz: 0x3ba0 => 0x1e80.
 			GL_INS("OO_BurnoutGames - Readback clouds renderered from TEX0.TBP0 = 0x%04x (TEX0.CBP = 0x%04x) to FBP = 0x%04x", TEX0.TBP0, TEX0.CBP, FRAME.Block());
-			r.SwPrimRender(r, true);
+			r.SwPrimRender(r, true, false);
 			skip = 1;
 		}
 		if (TEX0.TBW == 2 && TEX0.TW == 7 && ((TEX0.PSM == PSMT4 && FRAME.FBW == 3) || (TEX0.PSM == PSMT8 && FRAME.FBW == 2)) && TEX0.TH == 6 && (FRAME.FBMSK & 0xFFFFFF) == 0xFFFFFF)
@@ -261,7 +261,7 @@ bool GSHwHack::GSC_BlackAndBurnoutSky(GSRendererHW& r, int& skip)
 			// Rendering of the glass smashing effect and some chassis decal in to the alpha channel of the FRAME on boot (before the menu).
 			// This gets ejected from the texture cache due to old age, but never gets written back.
 			GL_INS("OO_BurnoutGames - Render glass smash from TEX0.TBP0 = 0x%04x (TEX0.CBP = 0x%04x) to FBP = 0x%04x", TEX0.TBP0, TEX0.CBP, FRAME.Block());
-			r.SwPrimRender(r, true);
+			r.SwPrimRender(r, true, false);
 			skip = 1;
 		}
 	}
@@ -652,7 +652,7 @@ bool GSHwHack::GSC_BlueTongueGames(GSRendererHW& r, int& skip)
 	// Also used for Nicktoons Unite, same engine it appears.
 	if ((context->FRAME.PSM == PSMCT16S || context->FRAME.PSM <= PSMCT24) && context->FRAME.FBW <= 5)
 	{
-		r.SwPrimRender(r, true);
+		r.SwPrimRender(r, true, false);
 		skip = 1;
 		return true;
 	}
@@ -661,11 +661,50 @@ bool GSHwHack::GSC_BlueTongueGames(GSRendererHW& r, int& skip)
 	// rendered on both.
 	if (context->FRAME.FBW == 8 && r.m_index.tail == 32 && r.PRIM->TME && context->TEX0.TBW == 1)
 	{
-		r.SwPrimRender(r, false);
+		r.SwPrimRender(r, false, false);
 		return false;
 	}
 
 	return false;
+}
+
+bool GSHwHack::GSC_MetalGearSolid3(GSRendererHW& r, int& skip)
+{
+	// MGS3 copies 256x224 in Z24 from 0x2000 to 0x2080 (with a BW of 8, so half the screen), and then uses this as a
+	// Z buffer. So, we effectively have two buffers within one, overlapping, at the 256 pixel point, colour on left,
+	// depth on right. Our texture cache can't handle that, and it thinks it's one big target, so when it does look up
+	// Z at 0x2080, it misses and loads from local memory instead, which of course, is junk. This is for the depth of
+	// field effect (MGS3-DOF.gs).
+
+	// We could fix this up at the time the Z data actually gets used, but that doubles the amount of copies we need to
+	// do, since OI fixes can't access the dirty area. So, instead, we'll just fudge the FBP when it copies 0x2000 to
+	// 0x2080, which normally happens with a 256 pixel offset, so we have to subtract that from the sprite verts too.
+
+	// Drawing with FPSM of Z24 is pretty unlikely, so hopefully this doesn't hit any false positives.
+	if (RFPSM != PSMZ24 || RTPSM != PSMZ24 || !RTME)
+		return false;
+
+	// For some reason, instead of being sensible and masking Z, they set up AFAIL instead.
+	if (!RZMSK)
+	{
+		u32 fm = 0, fm_mask = 0, zm = 0;
+		if (!r.m_cached_ctx.TEST.ATE || !r.TryAlphaTest(fm, fm_mask, zm) || zm == 0)
+			return false;
+	}
+
+	const int w_sub = (RFBW / 2) * 64;
+	const u32 w_sub_fp = w_sub << 4;
+	r.m_cached_ctx.FRAME.FBP += RFBW / 2;
+
+	GL_INS("OI_MetalGearSolid3(): %x -> %x, %dx%d, subtract %d", RFBP, RFBP + (RFBW / 2), r.m_r.width(), r.m_r.height(),
+		w_sub);
+
+	for (u32 i = 0; i < r.m_vertex.next; i++)
+		r.m_vertex.buff[i].XYZ.X -= w_sub_fp;
+
+	// No point adjusting the scissor, it just ends up expanding out anyway.. but we do have to fix up the draw rect.
+	r.m_r -= GSVector4i(w_sub);
+	return true;
 }
 
 bool GSHwHack::OI_PointListPalette(GSRendererHW& r, GSTexture* rt, GSTexture* ds, GSTextureCache::Source* t)
@@ -698,7 +737,7 @@ bool GSHwHack::OI_PointListPalette(GSRendererHW& r, GSTexture* rt, GSTexture* ds
 	{
 		const u32 FBP = r.m_cached_ctx.FRAME.Block();
 		const u32 FBW = r.m_cached_ctx.FRAME.FBW;
-		GL_INS("PointListPalette - m_r = <%d, %d => %d, %d>, n_vertices = %zu, FBP = 0x%x, FBW = %u", r.m_r.x, r.m_r.y, r.m_r.z, r.m_r.w, n_vertices, FBP, FBW);
+		GL_INS("PointListPalette - m_r = <%d, %d => %d, %d>, n_vertices = %u, FBP = 0x%x, FBW = %u", r.m_r.x, r.m_r.y, r.m_r.z, r.m_r.w, n_vertices, FBP, FBW);
 		const GSVertex* RESTRICT v = r.m_vertex.buff;
 		const int ox(r.m_context->XYOFFSET.OFX);
 		const int oy(r.m_context->XYOFFSET.OFY);
@@ -775,11 +814,11 @@ bool GSHwHack::OI_FFX(GSRendererHW& r, GSTexture* rt, GSTexture* ds, GSTextureCa
 	const u32 ZBP = RZBUF.Block();
 	const u32 TBP = RTEX0.TBP0;
 
-	if ((FBP == 0x00d00 || FBP == 0x00000) && ZBP == 0x02100 && RPRIM->TME && TBP == 0x01a00 && RTEX0.PSM == PSMCT16S)
+	if (ds && (FBP == 0x00d00 || FBP == 0x00000) && ZBP == 0x02100 && RPRIM->TME && TBP == 0x01a00 && RTEX0.PSM == PSMCT16S)
 	{
 		// random battle transition (z buffer written directly, clear it now)
 		GL_INS("OI_FFX ZB clear");
-		g_gs_device->ClearDepth(ds);
+		g_gs_device->ClearDepth(ds, 0.0f);
 	}
 
 	return true;
@@ -823,7 +862,7 @@ bool GSHwHack::OI_RozenMaidenGebetGarden(GSRendererHW& r, GSTexture* rt, GSTextu
 			if (GSTextureCache::Target* tmp_ds = g_texture_cache->LookupTarget(TEX0, r.GetTargetSize(), r.GetTextureScaleFactor(), GSTextureCache::DepthStencil))
 			{
 				GL_INS("OI_RozenMaidenGebetGarden ZB clear");
-				g_gs_device->ClearDepth(tmp_ds->m_texture);
+				g_gs_device->ClearDepth(tmp_ds->m_texture, 0.0f);
 			}
 
 			return false;
@@ -848,12 +887,15 @@ bool GSHwHack::OI_SonicUnleashed(GSRendererHW& r, GSTexture* rt, GSTexture* ds, 
 	Frame.TBP0 = RFRAME.Block();
 	Frame.PSM = RFRAME.PSM;
 
-	if ((!RPRIM->TME) || (GSLocalMemory::m_psm[Texture.PSM].bpp != 16) || (GSLocalMemory::m_psm[Frame.PSM].bpp != 16) || (Texture.TBP0 == Frame.TBP0) || (Frame.TBW != 16 && Texture.TBW != 16))
+	if ((!rt) || (!RPRIM->TME) || (GSLocalMemory::m_psm[Texture.PSM].bpp != 16) || (GSLocalMemory::m_psm[Frame.PSM].bpp != 16) || (Texture.TBP0 == Frame.TBP0) || (Frame.TBW != 16 && Texture.TBW != 16))
 		return true;
 
 	GL_INS("OI_SonicUnleashed replace draw by a copy");
 
 	GSTextureCache::Target* src = g_texture_cache->LookupTarget(Texture, GSVector2i(1, 1), r.GetTextureScaleFactor(), GSTextureCache::RenderTarget);
+
+	if (!src)
+		return true;
 
 	const GSVector2i src_size(src->m_texture->GetSize());
 	GSVector2i rt_size(rt->GetSize());
@@ -906,10 +948,10 @@ bool GSHwHack::OI_ArTonelico2(GSRendererHW& r, GSTexture* rt, GSTexture* ds, GST
 
 	const GSVertex* v = &r.m_vertex.buff[0];
 
-	if (r.m_vertex.next == 2 && !RPRIM->TME && RFRAME.FBW == 10 && v->XYZ.Z == 0 && RTEST.ZTST == ZTST_ALWAYS)
+	if (ds && r.m_vertex.next == 2 && !RPRIM->TME && RFRAME.FBW == 10 && v->XYZ.Z == 0 && RTEST.ZTST == ZTST_ALWAYS)
 	{
 		GL_INS("OI_ArTonelico2");
-		g_gs_device->ClearDepth(ds);
+		g_gs_device->ClearDepth(ds, 0.0f);
 	}
 
 	return true;
@@ -946,7 +988,7 @@ bool GSHwHack::GSC_Battlefield2(GSRendererHW& r, int& skip)
 			GSTextureCache::Target* dst = g_texture_cache->LookupTarget(TEX0, r.GetTargetSize(), r.GetTextureScaleFactor(), GSTextureCache::DepthStencil);
 			if (dst)
 			{
-				g_gs_device->ClearDepth(dst->m_texture);
+				g_gs_device->ClearDepth(dst->m_texture, 0.0f);
 			}
 		}
 	}
@@ -1084,6 +1126,7 @@ const GSHwHack::Entry<GSRendererHW::GSC_Ptr> GSHwHack::s_get_skip_count_function
 	CRC_F(GSC_Battlefield2),
 	CRC_F(GSC_NFSUndercover),
 	CRC_F(GSC_PolyphonyDigitalGames),
+	CRC_F(GSC_MetalGearSolid3),
 
 	// Channel Effect
 	CRC_F(GSC_GiTS),

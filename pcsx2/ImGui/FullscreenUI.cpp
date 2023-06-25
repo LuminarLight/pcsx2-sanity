@@ -1,5 +1,5 @@
 /*  PCSX2 - PS2 Emulator for PCs
- *  Copyright (C) 2002-2023  PCSX2 Dev Team
+ *  Copyright (C) 2002-2023 PCSX2 Dev Team
  *
  *  PCSX2 is free software: you can redistribute it and/or modify it under the terms
  *  of the GNU Lesser General Public License as published by the Free Software Found-
@@ -22,7 +22,6 @@
 #include "GS/Renderers/Common/GSTexture.h"
 #include "Achievements.h"
 #include "CDVD/CDVDdiscReader.h"
-#include "GS.h"
 #include "GameList.h"
 #include "Host.h"
 #include "INISettingsInterface.h"
@@ -31,11 +30,13 @@
 #include "ImGui/ImGuiManager.h"
 #include "Input/InputManager.h"
 #include "MemoryCardFile.h"
+#include "MTGS.h"
 #include "PAD/Host/PAD.h"
 #include "Sio.h"
 #include "USB/USB.h"
 #include "VMManager.h"
 #include "ps2/BiosTools.h"
+#include "Patch.h"
 #include "svnrev.h"
 
 #include "common/FileSystem.h"
@@ -175,6 +176,8 @@ namespace FullscreenUI
 		Achievements,
 		Folders,
 		Advanced,
+		Patches,
+		Cheats,
 		GameFixes,
 		Count
 	};
@@ -200,7 +203,7 @@ namespace FullscreenUI
 	//////////////////////////////////////////////////////////////////////////
 	// Main
 	//////////////////////////////////////////////////////////////////////////
-	static void UpdateGameDetails(std::string path, std::string serial, std::string title, u32 crc);
+	static void UpdateGameDetails(std::string path, std::string serial, std::string title, u32 disc_crc, u32 crc);
 	static void ToggleTheme();
 	static void PauseForMenuOpen();
 	static void ClosePauseMenu();
@@ -229,9 +232,9 @@ namespace FullscreenUI
 	// local copies of the currently-running game
 	static std::string s_current_game_title;
 	static std::string s_current_game_subtitle;
-	static std::string s_current_game_serial;
-	static std::string s_current_game_path;
-	static u32 s_current_game_crc;
+	static std::string s_current_disc_serial;
+	static std::string s_current_disc_path;
+	static u32 s_current_disc_crc;
 
 	//////////////////////////////////////////////////////////////////////////
 	// Resources
@@ -295,6 +298,7 @@ namespace FullscreenUI
 	static void DrawFoldersSettingsPage();
 	static void DrawAchievementsLoginWindow();
 	static void DrawAdvancedSettingsPage();
+	static void DrawPatchesOrCheatsSettingsPage(bool cheats);
 	static void DrawGameFixesSettingsPage();
 
 	static bool IsEditingGameSettings(SettingsInterface* bsi);
@@ -358,6 +362,7 @@ namespace FullscreenUI
 	static void DrawClampingModeSetting(SettingsInterface* bsi, const char* title, const char* summary, int vunum);
 	static void PopulateGraphicsAdapterList();
 	static void PopulateGameListDirectoryCache(SettingsInterface* si);
+	static void PopulatePatchesAndCheatsList(const std::string_view& serial, u32 crc);
 	static void BeginInputBinding(SettingsInterface* bsi, InputBindingInfo::Type type, const std::string_view& section,
 		const std::string_view& key, const std::string_view& display_name);
 	static void DrawInputBindingWindow();
@@ -373,6 +378,11 @@ namespace FullscreenUI
 	static std::vector<std::pair<std::string, bool>> s_game_list_directories_cache;
 	static std::vector<std::string> s_graphics_adapter_list_cache;
 	static std::vector<std::string> s_fullscreen_mode_list_cache;
+	static Patch::PatchInfoList s_game_patch_list;
+	static std::vector<std::string> s_enabled_game_patch_cache;
+	static Patch::PatchInfoList s_game_cheats_list;
+	static std::vector<std::string> s_enabled_game_cheat_cache;
+	static u32 s_game_cheat_unlabelled_count = 0;
 	static std::vector<const HotkeyInfo*> s_hotkey_list_cache;
 	static std::atomic_bool s_settings_changed{false};
 	static std::atomic_bool s_game_settings_changed{false};
@@ -574,11 +584,12 @@ bool FullscreenUI::Initialize()
 
 	s_initialized = true;
 	s_hotkey_list_cache = InputManager::GetHotkeyList();
-	GetMTGS().SetRunIdle(true);
+	MTGS::SetRunIdle(true);
 
 	if (VMManager::HasValidVM())
 	{
-		UpdateGameDetails(VMManager::GetDiscPath(), VMManager::GetGameSerial(), VMManager::GetGameName(), VMManager::GetGameCRC());
+		UpdateGameDetails(VMManager::GetDiscPath(), VMManager::GetDiscSerial(), VMManager::GetTitle(),
+			VMManager::GetDiscCRC(), VMManager::GetCurrentCRC());
 	}
 	else
 	{
@@ -612,13 +623,13 @@ void FullscreenUI::CheckForConfigChanges(const Pcsx2Config& old_config)
 	if (old_config.Achievements.Enabled && !EmuConfig.Achievements.Enabled)
 	{
 		// So, wait just in case.
-		GetMTGS().RunOnGSThread([]() {
+		MTGS::RunOnGSThread([]() {
 			if (s_current_main_window == MainWindowType::Achievements || s_current_main_window == MainWindowType::Leaderboards)
 			{
 				ReturnToMainWindow();
 			}
 		});
-		GetMTGS().WaitGS(false, false, false);
+		MTGS::WaitGS(false, false, false);
 	}
 #endif
 }
@@ -628,7 +639,7 @@ void FullscreenUI::OnVMStarted()
 	if (!IsInitialized())
 		return;
 
-	GetMTGS().RunOnGSThread([]() {
+	MTGS::RunOnGSThread([]() {
 		if (!IsInitialized())
 			return;
 
@@ -642,7 +653,7 @@ void FullscreenUI::OnVMDestroyed()
 	if (!IsInitialized())
 		return;
 
-	GetMTGS().RunOnGSThread([]() {
+	MTGS::RunOnGSThread([]() {
 		if (!IsInitialized())
 			return;
 
@@ -651,20 +662,21 @@ void FullscreenUI::OnVMDestroyed()
 	});
 }
 
-void FullscreenUI::GameChanged(std::string path, std::string serial, std::string title, u32 crc)
+void FullscreenUI::GameChanged(std::string path, std::string serial, std::string title, u32 disc_crc, u32 crc)
 {
 	if (!IsInitialized())
 		return;
 
-	GetMTGS().RunOnGSThread([path = std::move(path), serial = std::move(serial), title = std::move(title), crc]() {
-		if (!IsInitialized())
-			return;
+	MTGS::RunOnGSThread(
+		[path = std::move(path), serial = std::move(serial), title = std::move(title), disc_crc, crc]() {
+			if (!IsInitialized())
+				return;
 
-		UpdateGameDetails(std::move(path), std::move(serial), std::move(title), crc);
-	});
+			UpdateGameDetails(std::move(path), std::move(serial), std::move(title), disc_crc, crc);
+		});
 }
 
-void FullscreenUI::UpdateGameDetails(std::string path, std::string serial, std::string title, u32 crc)
+void FullscreenUI::UpdateGameDetails(std::string path, std::string serial, std::string title, u32 disc_crc, u32 crc)
 {
 	if (!serial.empty())
 		s_current_game_subtitle = fmt::format("{} / {:08X}", serial, crc);
@@ -672,9 +684,9 @@ void FullscreenUI::UpdateGameDetails(std::string path, std::string serial, std::
 		s_current_game_subtitle = {};
 
 	s_current_game_title = std::move(title);
-	s_current_game_serial = std::move(serial);
-	s_current_game_path = std::move(path);
-	s_current_game_crc = crc;
+	s_current_disc_serial = std::move(serial);
+	s_current_disc_path = std::move(path);
+	s_current_disc_crc = disc_crc;
 }
 
 void FullscreenUI::ToggleTheme()
@@ -699,7 +711,7 @@ void FullscreenUI::OpenPauseMenu()
 	if (!VMManager::HasValidVM())
 		return;
 
-	GetMTGS().RunOnGSThread([]() {
+	MTGS::RunOnGSThread([]() {
 		if (!ImGuiManager::InitializeFullscreenUI() || s_current_main_window != MainWindowType::None)
 			return;
 
@@ -740,13 +752,18 @@ void FullscreenUI::Shutdown(bool clear_state)
 		s_cover_image_map.clear();
 		s_game_list_sorted_entries = {};
 		s_game_list_directories_cache = {};
+		s_game_cheat_unlabelled_count = 0;
+		s_enabled_game_cheat_cache = {};
+		s_game_cheats_list = {};
+		s_enabled_game_patch_cache = {};
+		s_game_patch_list = {};
 		s_fullscreen_mode_list_cache = {};
 		s_graphics_adapter_list_cache = {};
 		s_current_game_title = {};
 		s_current_game_subtitle = {};
-		s_current_game_serial = {};
-		s_current_game_path = {};
-		s_current_game_crc = 0;
+		s_current_disc_serial = {};
+		s_current_disc_path = {};
+		s_current_disc_crc = 0;
 
 		s_current_main_window = MainWindowType::None;
 		s_current_pause_submenu = PauseSubMenu::None;
@@ -849,7 +866,7 @@ void FullscreenUI::InvalidateCoverCache()
 	if (!IsInitialized())
 		return;
 
-	GetMTGS().RunOnGSThread([]() { s_cover_image_map.clear(); });
+	MTGS::RunOnGSThread([]() { s_cover_image_map.clear(); });
 }
 
 void FullscreenUI::ReturnToMainWindow()
@@ -1013,7 +1030,7 @@ void FullscreenUI::DoToggleSoftwareRenderer()
 		if (!VMManager::HasValidVM())
 			return;
 
-		GetMTGS().ToggleSoftwareRendering();
+		MTGS::ToggleSoftwareRendering();
 	});
 }
 
@@ -1053,7 +1070,7 @@ void FullscreenUI::DoChangeDiscFromFile()
 	};
 
 	OpenFileSelector(ICON_FA_COMPACT_DISC " Select Disc Image", false, std::move(callback), GetDiscImageFilters(),
-		std::string(Path::GetDirectory(s_current_game_path)));
+		std::string(Path::GetDirectory(s_current_disc_path)));
 }
 
 void FullscreenUI::DoChangeDisc()
@@ -2227,7 +2244,7 @@ void FullscreenUI::StartAutomaticBinding(u32 port)
 	// messy because the enumeration has to happen on the input thread
 	Host::RunOnCPUThread([port]() {
 		std::vector<std::pair<std::string, std::string>> devices(InputManager::EnumerateDevices());
-		GetMTGS().RunOnGSThread([port, devices = std::move(devices)]() {
+		MTGS::RunOnGSThread([port, devices = std::move(devices)]() {
 			if (devices.empty())
 			{
 				ShowToast({}, "Automatic binding failed, no devices are available.");
@@ -2257,7 +2274,7 @@ void FullscreenUI::StartAutomaticBinding(u32 port)
 
 
 						// and the toast needs to happen on the UI thread.
-						GetMTGS().RunOnGSThread([result, name = std::move(name)]() {
+						MTGS::RunOnGSThread([result, name = std::move(name)]() {
 							ShowToast({}, result ? fmt::format("Automatic mapping completed for {}.", name) :
 												   fmt::format("Automatic mapping failed for {}.", name));
 						});
@@ -2315,6 +2332,10 @@ void FullscreenUI::SwitchToSettings()
 {
 	s_game_settings_entry.reset();
 	s_game_settings_interface.reset();
+	s_game_patch_list = {};
+	s_enabled_game_patch_cache = {};
+	s_game_cheats_list = {};
+	s_enabled_game_cheat_cache = {};
 	PopulateGraphicsAdapterList();
 
 	s_current_main_window = MainWindowType::Settings;
@@ -2326,6 +2347,7 @@ void FullscreenUI::SwitchToGameSettings(const std::string_view& serial, u32 crc)
 	s_game_settings_entry.reset();
 	s_game_settings_interface = std::make_unique<INISettingsInterface>(VMManager::GetGameSettingsPath(serial, crc));
 	s_game_settings_interface->Load();
+	PopulatePatchesAndCheatsList(serial, crc);
 	s_current_main_window = MainWindowType::Settings;
 	s_settings_page = SettingsPage::Summary;
 	QueueResetFocus();
@@ -2333,13 +2355,13 @@ void FullscreenUI::SwitchToGameSettings(const std::string_view& serial, u32 crc)
 
 void FullscreenUI::SwitchToGameSettings()
 {
-	if (s_current_game_serial.empty() || s_current_game_crc == 0)
+	if (s_current_disc_serial.empty() || s_current_disc_crc == 0)
 		return;
 
 	auto lock = GameList::GetLock();
-	const GameList::Entry* entry = GameList::GetEntryForPath(s_current_game_path.c_str());
+	const GameList::Entry* entry = GameList::GetEntryForPath(s_current_disc_path.c_str());
 	if (!entry)
-		entry = GameList::GetEntryBySerialAndCRC(s_current_game_serial.c_str(), s_current_game_crc);
+		entry = GameList::GetEntryBySerialAndCRC(s_current_disc_serial.c_str(), s_current_disc_crc);
 
 	if (entry)
 		SwitchToGameSettings(entry);
@@ -2371,6 +2393,25 @@ void FullscreenUI::PopulateGameListDirectoryCache(SettingsInterface* si)
 		s_game_list_directories_cache.emplace_back(std::move(dir), false);
 	for (std::string& dir : si->GetStringList("GameList", "RecursivePaths"))
 		s_game_list_directories_cache.emplace_back(std::move(dir), true);
+}
+
+void FullscreenUI::PopulatePatchesAndCheatsList(const std::string_view& serial, u32 crc)
+{
+	constexpr auto sort_patches = [](Patch::PatchInfoList& list) {
+		std::sort(list.begin(), list.end(),
+			[](const Patch::PatchInfo& lhs, const Patch::PatchInfo& rhs) { return lhs.name < rhs.name; });
+	};
+
+	s_game_patch_list = Patch::GetPatchInfo(serial, crc, false, nullptr);
+	sort_patches(s_game_patch_list);
+	s_game_cheats_list = Patch::GetPatchInfo(serial, crc, true, &s_game_cheat_unlabelled_count);
+	sort_patches(s_game_cheats_list);
+
+	pxAssert(s_game_settings_interface);
+	s_enabled_game_patch_cache =
+		s_game_settings_interface->GetStringList(Patch::PATCHES_CONFIG_SECTION, Patch::PATCH_ENABLE_CONFIG_KEY);
+	s_enabled_game_cheat_cache =
+		s_game_settings_interface->GetStringList(Patch::CHEATS_CONFIG_SECTION, Patch::PATCH_ENABLE_CONFIG_KEY);
 }
 
 void FullscreenUI::DoCopyGameSettings()
@@ -2422,18 +2463,21 @@ void FullscreenUI::DrawSettingsWindow()
 	{
 		static constexpr float ITEM_WIDTH = 25.0f;
 
-		static constexpr const char* global_icons[] = {ICON_FA_WINDOW_MAXIMIZE, ICON_FA_MICROCHIP, ICON_FA_SLIDERS_H, ICON_FA_MAGIC,
-			ICON_FA_HEADPHONES, ICON_FA_SD_CARD, ICON_FA_GAMEPAD, ICON_FA_KEYBOARD, ICON_FA_TROPHY, ICON_FA_FOLDER_OPEN, ICON_FA_COGS};
-		static constexpr const char* per_game_icons[] = {
-			ICON_FA_PARAGRAPH, ICON_FA_SLIDERS_H, ICON_FA_MAGIC, ICON_FA_HEADPHONES, ICON_FA_SD_CARD, ICON_FA_GAMEPAD, ICON_FA_BAN};
-		static constexpr SettingsPage global_pages[] = {SettingsPage::Interface, SettingsPage::BIOS, SettingsPage::Emulation,
-			SettingsPage::Graphics, SettingsPage::Audio, SettingsPage::MemoryCard, SettingsPage::Controller, SettingsPage::Hotkey,
-			SettingsPage::Achievements, SettingsPage::Folders, SettingsPage::Advanced};
-		static constexpr SettingsPage per_game_pages[] = {SettingsPage::Summary, SettingsPage::Emulation, SettingsPage::Graphics,
-			SettingsPage::Audio, SettingsPage::MemoryCard, SettingsPage::Controller, SettingsPage::GameFixes};
+		static constexpr const char* global_icons[] = {ICON_FA_WINDOW_MAXIMIZE, ICON_FA_MICROCHIP, ICON_FA_SLIDERS_H,
+			ICON_FA_MAGIC, ICON_FA_HEADPHONES, ICON_FA_SD_CARD, ICON_FA_GAMEPAD, ICON_FA_KEYBOARD, ICON_FA_TROPHY,
+			ICON_FA_FOLDER_OPEN, ICON_FA_COGS};
+		static constexpr const char* per_game_icons[] = {ICON_FA_PARAGRAPH, ICON_FA_SLIDERS_H, ICON_FA_MICROCHIP,
+			ICON_FA_FROWN, ICON_FA_MAGIC, ICON_FA_HEADPHONES, ICON_FA_SD_CARD, ICON_FA_GAMEPAD, ICON_FA_BAN};
+		static constexpr SettingsPage global_pages[] = {SettingsPage::Interface, SettingsPage::BIOS,
+			SettingsPage::Emulation, SettingsPage::Graphics, SettingsPage::Audio, SettingsPage::MemoryCard,
+			SettingsPage::Controller, SettingsPage::Hotkey, SettingsPage::Achievements, SettingsPage::Folders,
+			SettingsPage::Advanced};
+		static constexpr SettingsPage per_game_pages[] = {SettingsPage::Summary, SettingsPage::Emulation,
+			SettingsPage::Patches, SettingsPage::Cheats, SettingsPage::Graphics, SettingsPage::Audio,
+			SettingsPage::MemoryCard, SettingsPage::Controller, SettingsPage::GameFixes};
 		static constexpr const char* titles[] = {"Summary", "Interface Settings", "BIOS Settings", "Emulation Settings",
 			"Graphics Settings", "Audio Settings", "Memory Card Settings", "Controller Settings", "Hotkey Settings",
-			"Achievements Settings", "Folder Settings", "Advanced Settings", "Game Fixes"};
+			"Achievements Settings", "Folder Settings", "Advanced Settings", "Patches", "Cheats", "Game Fixes"};
 
 		SettingsInterface* bsi = GetEditingSettingsInterface();
 		const bool game_settings = IsEditingGameSettings(bsi);
@@ -2548,6 +2592,14 @@ void FullscreenUI::DrawSettingsWindow()
 
 			case SettingsPage::Folders:
 				DrawFoldersSettingsPage();
+				break;
+
+			case SettingsPage::Patches:
+				DrawPatchesOrCheatsSettingsPage(false);
+				break;
+
+			case SettingsPage::Cheats:
+				DrawPatchesOrCheatsSettingsPage(true);
 				break;
 
 			case SettingsPage::Advanced:
@@ -3331,6 +3383,8 @@ void FullscreenUI::DrawGraphicsSettingsPage()
 		"EmuCore/GS", "DisableDualSourceBlend", false);
 	DrawToggleSetting(bsi, "Disable Shader Cache", "Prevents the loading and saving of shaders/pipelines to disk.", "EmuCore/GS",
 		"DisableShaderCache", false);
+	DrawToggleSetting(bsi, "Disable Vertex Shader Expand", "Falls back to the CPU for expanding sprites/lines.", "EmuCore/GS",
+		"DisableVertexShaderExpand", false);
 
 	EndMenuButtons();
 }
@@ -3421,7 +3475,7 @@ void FullscreenUI::DrawMemoryCardSettingsPage()
 	DrawToggleSetting(bsi, ICON_FA_SEARCH " Folder Memory Card Filter",
 		"Simulates a larger memory card by filtering saves only to the current game.", "EmuCore", "McdFolderAutoManage", true);
 	DrawToggleSetting(bsi, ICON_FA_MAGIC " Auto Eject When Loading",
-		"Automatically ejects memory cards when they differ after loading a state.", "EmuCore", "McdEnableEjection", true);
+		"Automatically ejects Memory Cards when they differ after loading a state.", "EmuCore", "McdEnableEjection", true);
 
 	for (u32 port = 0; port < NUM_MEMORY_CARD_PORTS; port++)
 	{
@@ -3514,7 +3568,7 @@ void FullscreenUI::DrawCreateMemoryCardWindow()
 	if (ImGui::BeginPopupModal("Create Memory Card", &is_open, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize))
 	{
 		ImGui::TextWrapped("Enter the name of the memory card you wish to create, and choose a size. We recommend either using 8MB memory "
-						   "cards, or folder memory cards for best compatibility.");
+						   "cards, or folder Memory Cards for best compatibility.");
 		ImGui::NewLine();
 
 		static char memcard_name[256] = {};
@@ -3550,7 +3604,7 @@ void FullscreenUI::DrawCreateMemoryCardWindow()
 				const auto& [type_title, type, file_type] = memcard_types[memcard_type];
 				if (FileMcd_CreateNewCard(real_card_name, type, file_type))
 				{
-					ShowToast(std::string(), fmt::format("Memory card '{}' created.", real_card_name));
+					ShowToast(std::string(), fmt::format("Memory Card '{}' created.", real_card_name));
 
 					std::memset(memcard_name, 0, sizeof(memcard_name));
 					memcard_type = 0;
@@ -3590,6 +3644,7 @@ void FullscreenUI::CopyGlobalControllerSettingsToGame()
 	SettingsInterface* ssi = GetEditingSettingsInterface(false);
 
 	PAD::CopyConfiguration(dsi, *ssi, true, true, false);
+	USB::CopyConfiguration(dsi, *ssi, true, true);
 	SetSettingsChanged(dsi);
 
 	ShowToast(std::string(), "Per-game controller configuration initialized with global settings.");
@@ -3601,6 +3656,7 @@ void FullscreenUI::ResetControllerSettings()
 
 	PAD::SetDefaultControllerConfig(*dsi);
 	PAD::SetDefaultHotkeyConfig(*dsi);
+	USB::SetDefaultConfiguration(dsi);
 	ShowToast(std::string(), "Controller settings reset to default.");
 }
 
@@ -3633,6 +3689,7 @@ void FullscreenUI::DoLoadInputProfile()
 			auto lock = Host::GetSettingsLock();
 			SettingsInterface* dsi = GetEditingSettingsInterface();
 			PAD::CopyConfiguration(dsi, ssi, true, true, IsEditingGameSettings(dsi));
+			USB::CopyConfiguration(dsi, ssi, true, true);
 			SetSettingsChanged(dsi);
 			ShowToast(std::string(), fmt::format("Input profile '{}' loaded.", title));
 			CloseChoiceDialog();
@@ -3646,6 +3703,7 @@ void FullscreenUI::DoSaveInputProfile(const std::string& name)
 	auto lock = Host::GetSettingsLock();
 	SettingsInterface* ssi = GetEditingSettingsInterface();
 	PAD::CopyConfiguration(&dsi, *ssi, true, true, IsEditingGameSettings(ssi));
+	USB::CopyConfiguration(&dsi, *ssi, true, true);
 	if (dsi.Save())
 		ShowToast(std::string(), fmt::format("Input profile '{}' saved.", name));
 	else
@@ -3792,12 +3850,12 @@ void FullscreenUI::DrawControllerSettingsPage()
 		const PAD::ControllerInfo* ci = PAD::GetControllerInfo(type);
 		if (MenuButton(ICON_FA_GAMEPAD " Controller Type", ci ? ci->display_name : "Unknown"))
 		{
-			std::vector<std::pair<std::string, std::string>> raw_options(PAD::GetControllerTypeNames());
+			const std::vector<std::pair<const char*, const char*>> raw_options = PAD::GetControllerTypeNames();
 			ImGuiFullscreen::ChoiceDialogOptions options;
 			options.reserve(raw_options.size());
 			for (auto& it : raw_options)
 			{
-				options.emplace_back(std::move(it.second), type == it.first);
+				options.emplace_back(it.second, type == it.first);
 			}
 			OpenChoiceDialog(fmt::format("Port {} Controller Type", global_slot + 1).c_str(), false, std::move(options),
 				[game_settings = IsEditingGameSettings(bsi), section, raw_options = std::move(raw_options)](
@@ -3807,7 +3865,7 @@ void FullscreenUI::DrawControllerSettingsPage()
 
 					auto lock = Host::GetSettingsLock();
 					SettingsInterface* bsi = GetEditingSettingsInterface(game_settings);
-					bsi->SetStringValue(section, "Type", raw_options[index].first.c_str());
+					bsi->SetStringValue(section, "Type", raw_options[index].first);
 					SetSettingsChanged(bsi);
 					CloseChoiceDialog();
 				});
@@ -3978,12 +4036,12 @@ void FullscreenUI::DrawControllerSettingsPage()
 		const std::string type(USB::GetConfigDevice(*bsi, port));
 		if (MenuButton(ICON_FA_GAMEPAD " Device Type", USB::GetDeviceName(type)))
 		{
-			std::vector<std::pair<std::string, std::string>> raw_options(USB::GetDeviceTypes());
+			const std::vector<std::pair<const char*, const char*>> raw_options = USB::GetDeviceTypes();
 			ImGuiFullscreen::ChoiceDialogOptions options;
 			options.reserve(raw_options.size());
 			for (auto& it : raw_options)
 			{
-				options.emplace_back(std::move(it.second), type == it.first);
+				options.emplace_back(it.second, type == it.first);
 			}
 			OpenChoiceDialog(fmt::format("Port {} Device", port + 1).c_str(), false, std::move(options),
 				[game_settings = IsEditingGameSettings(bsi), raw_options = std::move(raw_options), port](
@@ -3993,7 +4051,7 @@ void FullscreenUI::DrawControllerSettingsPage()
 
 					auto lock = Host::GetSettingsLock();
 					SettingsInterface* bsi = GetEditingSettingsInterface(game_settings);
-					USB::SetConfigDevice(*bsi, port, raw_options[static_cast<u32>(index)].first.c_str());
+					USB::SetConfigDevice(*bsi, port, raw_options[static_cast<u32>(index)].first);
 					SetSettingsChanged(bsi);
 					CloseChoiceDialog();
 				});
@@ -4196,6 +4254,94 @@ void FullscreenUI::DrawAdvancedSettingsPage()
 	EndMenuButtons();
 }
 
+void FullscreenUI::DrawPatchesOrCheatsSettingsPage(bool cheats)
+{
+	SettingsInterface* bsi = GetEditingSettingsInterface();
+
+	const Patch::PatchInfoList& patch_list = cheats ? s_game_cheats_list : s_game_patch_list;
+	std::vector<std::string>& enable_list = cheats ? s_enabled_game_cheat_cache : s_enabled_game_patch_cache;
+	const char* section = cheats ? Patch::CHEATS_CONFIG_SECTION : Patch::PATCHES_CONFIG_SECTION;
+	const bool master_enable = cheats ? GetEffectiveBoolSetting(bsi, "EmuCore", "EnableCheats", false) : true;
+
+	BeginMenuButtons();
+
+	if (cheats)
+	{
+		MenuHeading("Settings");
+		DrawToggleSetting(
+			bsi, "Enable Cheats", "Enables loading cheats from pnach files.", "EmuCore", "EnableCheats", false);
+
+		if (patch_list.empty())
+		{
+			ActiveButton("No cheats are available for this game.", false, false,
+				ImGuiFullscreen::LAYOUT_MENU_BUTTON_HEIGHT_NO_SUMMARY);
+		}
+		else
+		{
+			MenuHeading("Cheat Codes");
+		}
+	}
+	else
+	{
+		if (patch_list.empty())
+		{
+			ActiveButton("No patches are available for this game.", false, false,
+				ImGuiFullscreen::LAYOUT_MENU_BUTTON_HEIGHT_NO_SUMMARY);
+		}
+		else
+		{
+			MenuHeading("Game Patches");
+		}
+	}
+
+	for (const Patch::PatchInfo& pi : patch_list)
+	{
+		const auto enable_it = std::find(enable_list.begin(), enable_list.end(), pi.name);
+
+		bool state = (enable_it != enable_list.end());
+		if (ToggleButton(pi.name.c_str(), pi.description.c_str(), &state, master_enable))
+		{
+			if (state)
+			{
+				bsi->AddToStringList(section, Patch::PATCH_ENABLE_CONFIG_KEY, pi.name.c_str());
+				enable_list.push_back(pi.name);
+			}
+			else
+			{
+				bsi->RemoveFromStringList(section, Patch::PATCH_ENABLE_CONFIG_KEY, pi.name.c_str());
+				enable_list.erase(enable_it);
+			}
+
+			SetSettingsChanged(bsi);
+		}
+	}
+
+	if (cheats && s_game_cheat_unlabelled_count > 0)
+	{
+		ActiveButton(
+			master_enable ?
+				fmt::format("{} unlabelled patch codes will automatically activate.", s_game_cheat_unlabelled_count)
+					.c_str() :
+				fmt::format("{} unlabelled patch codes found but not enabled.", s_game_cheat_unlabelled_count).c_str(),
+			false, false, ImGuiFullscreen::LAYOUT_MENU_BUTTON_HEIGHT_NO_SUMMARY);
+	}
+
+	if (!patch_list.empty() || (cheats && s_game_cheat_unlabelled_count > 0))
+	{
+		ActiveButton(
+			cheats ?
+				"Activating cheats can cause unpredictable behavior, crashing, soft-locks, or broken saved games." :
+				"Activating game patches can cause unpredictable behavior, crashing, soft-locks, or broken saved "
+				"games.",
+			false, false, ImGuiFullscreen::LAYOUT_MENU_BUTTON_HEIGHT_NO_SUMMARY);
+		ActiveButton("Use patches at your own risk, the PCSX2 team will provide no support for users who have enabled "
+					 "game patches.",
+			false, false, ImGuiFullscreen::LAYOUT_MENU_BUTTON_HEIGHT_NO_SUMMARY);
+	}
+
+	EndMenuButtons();
+}
+
 void FullscreenUI::DrawGameFixesSettingsPage()
 {
 	SettingsInterface* bsi = GetEditingSettingsInterface();
@@ -4269,7 +4415,7 @@ void FullscreenUI::DrawPauseMenu(MainWindowType type)
 
 		const float image_width = has_rich_presence ? 60.0f : 50.0f;
 		const float image_height = has_rich_presence ? 90.0f : 75.0f;
-		const std::string_view path_string(Path::GetFileName(s_current_game_path));
+		const std::string_view path_string(Path::GetFileName(s_current_disc_path));
 		const ImVec2 title_size(
 			g_large_font->CalcTextSizeA(g_large_font->FontSize, std::numeric_limits<float>::max(), -1.0f, s_current_game_title.c_str()));
 		const ImVec2 path_size(path_string.empty() ?
@@ -4348,9 +4494,9 @@ void FullscreenUI::DrawPauseMenu(MainWindowType type)
 		const ImVec2 time_pos(display_size.x - LayoutScale(10.0f) - time_size.x, LayoutScale(10.0f));
 		DrawShadowedText(dl, g_large_font, time_pos, IM_COL32(255, 255, 255, 255), buf);
 
-		if (!s_current_game_serial.empty())
+		if (!s_current_disc_serial.empty())
 		{
-			const std::time_t cached_played_time = GameList::GetCachedPlayedTimeForSerial(s_current_game_serial);
+			const std::time_t cached_played_time = GameList::GetCachedPlayedTimeForSerial(s_current_disc_serial);
 			const std::time_t session_time = static_cast<std::time_t>(VMManager::GetSessionPlayedTime());
 			const std::string played_time_str(GameList::FormatTimespan(cached_played_time + session_time, true));
 			const std::string session_time_str(GameList::FormatTimespan(session_time, true));
@@ -4392,7 +4538,7 @@ void FullscreenUI::DrawPauseMenu(MainWindowType type)
 			case PauseSubMenu::None:
 			{
 				// NOTE: Menu close must come first, because otherwise VM destruction options will race.
-				const bool can_load_or_save_state = s_current_game_crc != 0;
+				const bool can_load_or_save_state = s_current_disc_crc != 0;
 
 				if (ActiveButton(ICON_FA_PLAY " Resume Game", false) || WantsToCloseMenu())
 					ClosePauseMenu();
@@ -4617,7 +4763,7 @@ bool FullscreenUI::OpenSaveStateSelector(bool is_loading)
 	s_save_state_selector_game_path = {};
 	s_save_state_selector_loading = is_loading;
 	s_save_state_selector_resuming = false;
-	if (PopulateSaveStateListEntries(s_current_game_title.c_str(), s_current_game_serial.c_str(), s_current_game_crc) > 0)
+	if (PopulateSaveStateListEntries(s_current_game_title.c_str(), s_current_disc_serial.c_str(), s_current_disc_crc) > 0)
 	{
 		s_save_state_selector_open = true;
 		return true;
@@ -5747,7 +5893,7 @@ void FullscreenUI::DrawCoverDownloaderWindow()
 					GameList::DownloadCovers(urls, use_serial_names, progress, [](const GameList::Entry* entry, std::string save_path) {
 						// cache the cover path on our side once it's saved
 						Host::RunOnCPUThread([path = entry->path, save_path = std::move(save_path)]() {
-							GetMTGS().RunOnGSThread([path = std::move(path), save_path = std::move(save_path)]() {
+							MTGS::RunOnGSThread([path = std::move(path), save_path = std::move(save_path)]() {
 								s_cover_image_map[std::move(path)] = std::move(save_path);
 							});
 						});
@@ -5818,7 +5964,7 @@ GSTexture* FullscreenUI::GetCoverForCurrentGame()
 {
 	auto lock = GameList::GetLock();
 
-	const GameList::Entry* entry = GameList::GetEntryForPath(s_current_game_path.c_str());
+	const GameList::Entry* entry = GameList::GetEntryForPath(s_current_disc_path.c_str());
 	if (!entry)
 		return s_fallback_disc_texture.get();
 
@@ -6024,7 +6170,7 @@ void FullscreenUI::OpenAchievementsWindow()
 	if (!VMManager::HasValidVM() || !Achievements::IsActive())
 		return;
 
-	GetMTGS().RunOnGSThread([]() {
+	MTGS::RunOnGSThread([]() {
 		if (!ImGuiManager::InitializeFullscreenUI())
 			return;
 
@@ -6414,7 +6560,7 @@ void FullscreenUI::OpenLeaderboardsWindow()
 	if (!VMManager::HasValidVM() || !Achievements::IsActive())
 		return;
 
-	GetMTGS().RunOnGSThread([]() {
+	MTGS::RunOnGSThread([]() {
 		if (!ImGuiManager::InitializeFullscreenUI())
 			return;
 

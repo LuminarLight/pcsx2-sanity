@@ -2092,6 +2092,13 @@ SCED-51262:
 SCED-51279:
   name: "Official PlayStation 2 Magazine Demo 25"
   region: "PAL-M5"
+SCED-51305:
+  name: "WRC II Extreme [Press Kit]"
+  region: "PAL-E"
+  gameFixes:
+    - XGKickHack # Fixes SPS.
+  gsHWFixes:
+    halfPixelOffset: 1 # Fixes texture misalignment.
 SCED-51319:
   name: "Official PlayStation 2 Magazine Demo 27" # German
   region: "PAL-E-G"
@@ -2227,6 +2234,13 @@ SCED-51573:
 SCED-51575:
   name: "Official PlayStation 2 Magazine Demo 40" # German
   region: "PAL-E-G"
+SCED-51632:
+  name: "WRC II Extreme [Special Demo]"
+  region: "PAL-E"
+  gameFixes:
+    - XGKickHack # Fixes SPS.
+  gsHWFixes:
+    halfPixelOffset: 1 # Fixes texture misalignment.
 SCED-51657:
   name: "Official PlayStation Magazine Demo 33"
   region: "PAL-Unk"
@@ -5051,6 +5065,8 @@ SCES-55571:
 SCES-55573:
   name: "MotorStorm - Arctic Edge"
   region: "PAL-M14"
+  clampModes:
+    vu1ClampMode: 3 # Fixes bad polys in menu.
 SCES-55591:
   name: "Street Cricket Champions"
   region: "PAL-IN"
@@ -7350,7 +7366,7 @@ SCPS-55901:
         // was simply to exit the game completely.
         comment=Save Point Crash Prevention
         author=pandubz, PSI, turtleli
-        patch=1,EE,00285f44,word,2413001e
+        patch=1,EE,00285f44,word,24130064
         patch=1,EE,00285f48,word,8f85ab00
         patch=1,EE,00285f4c,word,26640000
         patch=1,EE,00285f50,word,0c0935a8
@@ -9397,9 +9413,11 @@ SCUS-97653:
   region: "NTSC-U"
   compat: 5
 SCUS-97654:
-  name: "MotorStorm Arctic Edge"
+  name: "MotorStorm - Arctic Edge"
   region: "NTSC-U"
   compat: 5
+  clampModes:
+    vu1ClampMode: 3 # Fixes bad polys in menu.
 SCUS-97657:
   name: "MLB 11 - The Show"
   region: "NTSC-U"
@@ -9594,6 +9612,7 @@ SLAJ-25072:
     mipmap: 2 # Mipmap + trilinear, improves ground textures to match sw renderer.
     trilinearFiltering: 1
     halfPixelOffset: 2 # Fix effects upscaling.
+    autoFlush: 1 # Fixes broken post processing.
 SLAJ-25073:
   name: "Resident Evil 4"
   region: "NTSC-J"
@@ -10048,6 +10067,7 @@ SLED-53845:
     mipmap: 2 # Mipmap + trilinear, improves ground textures to match sw renderer.
     trilinearFiltering: 1
     halfPixelOffset: 2 # Fix effects upscaling.
+    autoFlush: 1 # Fixes broken post processing.
 SLED-53937:
   name: "Black [Demo]"
   region: "PAL-M5"
@@ -18010,11 +18030,17 @@ SLES-53393:
   compat: 5
   gameFixes:
     - EETimingHack # Fixes garbage textures flashing on the character model.
+  gsHWFixes:
+    autoFlush: 1 # Fixes missing post processing.
+    halfPixelOffset: 1 # Aligns post processing.
 SLES-53396:
   name: "Spartan - Total Warrior"
   region: "PAL-M3"
   gameFixes:
     - EETimingHack # Fixes garbage textures flashing on the character model.
+  gsHWFixes:
+    autoFlush: 1 # Fixes missing post processing.
+    halfPixelOffset: 1 # Aligns post processing.
 SLES-53398:
   name: "Zombie Zone"
   region: "PAL-E"
@@ -18202,6 +18228,7 @@ SLES-53462:
     mipmap: 2 # Mipmap + trilinear, improves ground textures to match sw renderer.
     trilinearFiltering: 1
     halfPixelOffset: 2 # Fix effects upscaling.
+    autoFlush: 1 # Fixes broken post processing.
 SLES-53463:
   name: "NHL '06"
   region: "PAL-E"
@@ -19258,6 +19285,7 @@ SLES-53759:
     mipmap: 2 # Mipmap + trilinear, improves ground textures to match sw renderer.
     trilinearFiltering: 1
     halfPixelOffset: 2 # Fix effects upscaling.
+    autoFlush: 1 # Fixes broken post processing.
 SLES-53760:
   name: "Rugby Challenge 2006"
   region: "PAL-M5"
@@ -19347,6 +19375,7 @@ SLES-53799:
     mipmap: 2 # Mipmap + trilinear, improves ground textures to match sw renderer.
     trilinearFiltering: 1
     halfPixelOffset: 2 # Fix effects upscaling.
+    autoFlush: 1 # Fixes broken post processing.
 SLES-53800:
   name: "Rampage - Total Destruction"
   region: "PAL-M5"
@@ -23824,8 +23853,10 @@ SLES-55572:
   gameFixes:
     - EETimingHack # Broken textures.
 SLES-55573:
-  name: "MotorStorm Arctic Edge"
+  name: "MotorStorm - Arctic Edge"
   region: "PAL-M14"
+  clampModes:
+    vu1ClampMode: 3 # Fixes bad polys in menu.
 SLES-55574:
   name: "Lord of the Rings, The - Aragorn's Quest"
   region: "PAL-M6"
@@ -24081,6 +24112,7 @@ SLES-82013:
   gsHWFixes:
     halfPixelOffset: 2 # Fixes blurry characters.
     autoFlush: 2 # Fixes lens flare.
+    getSkipCount: "GSC_MetalGearSolid3" # Fixes depth of field blur.
 SLES-82018:
   name: "Cy Girls [Ice Disc]"
   region: "PAL-E-F-S"
@@ -24105,6 +24137,7 @@ SLES-82024:
   gsHWFixes:
     halfPixelOffset: 2 # Fixes blurry characters.
     autoFlush: 2 # Fixes lens flare.
+    getSkipCount: "GSC_MetalGearSolid3" # Fixes depth of field blur.
 SLES-82026:
   name: "Metal Gear Solid 3 - Snake Eater"
   region: "PAL-S"
@@ -24113,6 +24146,7 @@ SLES-82026:
   gsHWFixes:
     halfPixelOffset: 2 # Fixes blurry characters.
     autoFlush: 2 # Fixes lens flare.
+    getSkipCount: "GSC_MetalGearSolid3" # Fixes depth of field blur.
 SLES-82028:
   name: "Star Ocean 3 - Till the End of Time [Disc 1 of 2]"
   region: "PAL-E"
@@ -24161,6 +24195,7 @@ SLES-82032:
   gsHWFixes:
     halfPixelOffset: 2 # Fixes blurry characters.
     autoFlush: 2 # Fixes lens flare.
+    getSkipCount: "GSC_MetalGearSolid3" # Fixes depth of field blur.
 SLES-82034:
   name: "Xenosaga Episode II [Disc 1 of 2]"
   region: "PAL-M3"
@@ -24224,6 +24259,7 @@ SLES-82042:
   gsHWFixes:
     autoFlush: 2 # Fixes lens flare.
     halfPixelOffset: 2 # Fixes blurriness.
+    getSkipCount: "GSC_MetalGearSolid3" # Fixes depth of field blur.
 SLES-82043:
   name: "Metal Gear Solid 3 - Subsistence [Disc 2 of 3]"
   region: "PAL-E-F"
@@ -24233,6 +24269,7 @@ SLES-82043:
   gsHWFixes:
     autoFlush: 2 # Fixes lens flare.
     halfPixelOffset: 2 # Fixes blurriness.
+    getSkipCount: "GSC_MetalGearSolid3" # Fixes depth of field blur.
   memcardFilters:
     - "SLES-82042"
 SLES-82044:
@@ -24244,6 +24281,7 @@ SLES-82044:
   gsHWFixes:
     autoFlush: 2 # Fixes lens flare.
     halfPixelOffset: 2 # Fixes blurriness.
+    getSkipCount: "GSC_MetalGearSolid3" # Fixes depth of field blur.
 SLES-82045:
   name: "Metal Gear Solid 3 - Subsistence [Disc 2 of 3]"
   region: "PAL-I"
@@ -24253,6 +24291,7 @@ SLES-82045:
   gsHWFixes:
     autoFlush: 2 # Fixes lens flare.
     halfPixelOffset: 2 # Fixes blurriness.
+    getSkipCount: "GSC_MetalGearSolid3" # Fixes depth of field blur.
   memcardFilters:
     - "SLES-82044"
 SLES-82046:
@@ -24264,6 +24303,7 @@ SLES-82046:
   gsHWFixes:
     autoFlush: 2 # Fixes lens flare.
     halfPixelOffset: 2 # Fixes blurriness.
+    getSkipCount: "GSC_MetalGearSolid3" # Fixes depth of field blur.
 SLES-82047:
   name: "Metal Gear Solid 3 - Subsistence [Disc 2 of 3]"
   region: "PAL-G"
@@ -24273,6 +24313,7 @@ SLES-82047:
   gsHWFixes:
     autoFlush: 2 # Fixes lens flare.
     halfPixelOffset: 2 # Fixes blurriness.
+    getSkipCount: "GSC_MetalGearSolid3" # Fixes depth of field blur.
   memcardFilters:
     - "SLES-82046"
 SLES-82048:
@@ -24284,6 +24325,7 @@ SLES-82048:
   gsHWFixes:
     autoFlush: 2 # Fixes lens flare.
     halfPixelOffset: 2 # Fixes blurriness.
+    getSkipCount: "GSC_MetalGearSolid3" # Fixes depth of field blur.
 SLES-82049:
   name: "Metal Gear Solid 3 - Subsistence [Disc 2 of 3]"
   region: "PAL-S"
@@ -24293,6 +24335,7 @@ SLES-82049:
   gsHWFixes:
     autoFlush: 2 # Fixes lens flare.
     halfPixelOffset: 2 # Fixes blurriness.
+    getSkipCount: "GSC_MetalGearSolid3" # Fixes depth of field blur.
   memcardFilters:
     - "SLES-82048"
 SLES-82050:
@@ -24304,6 +24347,7 @@ SLES-82050:
   gsHWFixes:
     autoFlush: 2 # Fixes lens flare.
     halfPixelOffset: 2 # Fixes blurriness.
+    getSkipCount: "GSC_MetalGearSolid3" # Fixes depth of field blur.
   memcardFilters:
     - "SLES-82042"
 SLES-82051:
@@ -24315,6 +24359,7 @@ SLES-82051:
   gsHWFixes:
     autoFlush: 2 # Fixes lens flare.
     halfPixelOffset: 2 # Fixes blurriness.
+    getSkipCount: "GSC_MetalGearSolid3" # Fixes depth of field blur.
   memcardFilters:
     - "SLES-82044"
 SLES-82052:
@@ -24326,6 +24371,7 @@ SLES-82052:
   gsHWFixes:
     autoFlush: 2 # Fixes lens flare.
     halfPixelOffset: 2 # Fixes blurriness.
+    getSkipCount: "GSC_MetalGearSolid3" # Fixes depth of field blur.
   memcardFilters:
     - "SLES-82046"
 SLES-82053:
@@ -24337,6 +24383,7 @@ SLES-82053:
   gsHWFixes:
     autoFlush: 2 # Fixes lens flare.
     halfPixelOffset: 2 # Fixes blurriness.
+    getSkipCount: "GSC_MetalGearSolid3" # Fixes depth of field blur.
   memcardFilters:
     - "SLES-82048"
 SLKA-15002:
@@ -24432,6 +24479,8 @@ SLKA-15032:
 SLKA-15033:
   name: "Princess Maker 2"
   region: "NTSC-K"
+  gsHWFixes:
+    partialTargetInvalidation: 1 # Fixes full screen C32->C16 frame invalidation.
 SLKA-15043:
   name: "Super Puzzle Bobble Collection Vol 1"
   region: "NTSC-K"
@@ -25183,6 +25232,7 @@ SLKA-25251:
   gsHWFixes:
     halfPixelOffset: 2 # Fixes blurriness.
     autoFlush: 2 # Fixes lens flare.
+    getSkipCount: "GSC_MetalGearSolid3" # Fixes depth of field blur.
 SLKA-25252:
   name: "Forgotten Realms - Demon Stone"
   region: "NTSC-K"
@@ -25341,6 +25391,7 @@ SLKA-25303:
     mipmap: 2 # Mipmap + trilinear, improves ground textures to match sw renderer.
     trilinearFiltering: 1
     halfPixelOffset: 2 # Fix effects upscaling.
+    autoFlush: 1 # Fixes broken post processing.
 SLKA-25304:
   name: "Burnout Revenge"
   region: "NTSC-K"
@@ -25500,6 +25551,7 @@ SLKA-25353:
   gsHWFixes:
     autoFlush: 2 # Fixes lens flare.
     halfPixelOffset: 2 # Fixes blurriness.
+    getSkipCount: "GSC_MetalGearSolid3" # Fixes depth of field blur.
 SLKA-25354:
   name: "Metal Gear Solid 3 - Subsistence [Limited Edition] [Disc 2 of 3]"
   region: "NTSC-K"
@@ -25510,6 +25562,7 @@ SLKA-25354:
   gsHWFixes:
     autoFlush: 2 # Fixes lens flare.
     halfPixelOffset: 2 # Fixes blurriness.
+    getSkipCount: "GSC_MetalGearSolid3" # Fixes depth of field blur.
   memcardFilters:
     - "SLKA-25353"
 SLKA-25355:
@@ -25522,6 +25575,7 @@ SLKA-25355:
   gsHWFixes:
     autoFlush: 2 # Fixes lens flare.
     halfPixelOffset: 2 # Fixes blurriness.
+    getSkipCount: "GSC_MetalGearSolid3" # Fixes depth of field blur.
   memcardFilters:
     - "SLKA-25353"
 SLKA-25359:
@@ -25720,6 +25774,9 @@ SLPM-55005:
     roundSprite: 1 # Fixes lines in sprites but still some lines left.
   speedHacks:
     mvuFlagSpeedHack: 0 # Fixes missing graphical effects.
+SLPM-55006:
+  name: "Akane-iro ni Somaru Saka - Parallel"
+  region: "NTSC-J"
 SLPM-55008:
   name: "Sengoku Basara X"
   region: "NTSC-J"
@@ -26263,6 +26320,9 @@ SLPM-60109:
     roundSprite: 1 # Fixes ui and hud alignment.
     gpuPaletteConversion: 2 # Lots of CLUTs in large textures.
     cpuCLUTRender: 1 # Fixes car textures.
+SLPM-60114:
+  name: "Magical Sports - 2000 Koushien [Trial]"
+  region: "NTSC-J"
 SLPM-60122:
   name: "Ring of Red [Taikenban trial]"
   region: "NTSC-J"
@@ -28637,6 +28697,8 @@ SLPM-62700:
 SLPM-62701:
   name: "Princess Maker 2 [Best Hit Selection]"
   region: "NTSC-J"
+  gsHWFixes:
+    partialTargetInvalidation: 1 # Fixes full screen C32->C16 frame invalidation.
 SLPM-62702:
   name: "Momotaro Densetsu 15"
   region: "NTSC-J"
@@ -29967,6 +30029,8 @@ SLPM-65284:
   region: "NTSC-J"
   gameFixes:
     - XGKickHack # Fixes SPS.
+  gsHWFixes:
+    halfPixelOffset: 1 # Fixes texture misalignment.
 SLPM-65285:
   name: "Love Hina Gorgeous [First Limited Edition]"
   region: "NTSC-J"
@@ -30908,6 +30972,8 @@ SLPM-65573:
   region: "NTSC-J"
   gameFixes:
     - XGKickHack # Fixes SPS.
+  gsHWFixes:
+    halfPixelOffset: 1 # Fixes texture misalignment.
 SLPM-65574:
   name: "Silent Hill 4 - The Room"
   region: "NTSC-J"
@@ -31674,6 +31740,7 @@ SLPM-65789:
   gsHWFixes:
     halfPixelOffset: 2 # Fixes blurriness.
     autoFlush: 2 # Fixes lens flare.
+    getSkipCount: "GSC_MetalGearSolid3" # Fixes depth of field blur.
 SLPM-65790:
   name: "Metal Gear Solid 3 - Snake Eater"
   region: "NTSC-J"
@@ -31682,6 +31749,7 @@ SLPM-65790:
   gsHWFixes:
     halfPixelOffset: 2 # Fixes blurriness.
     autoFlush: 2 # Fixes lens flare.
+    getSkipCount: "GSC_MetalGearSolid3" # Fixes depth of field blur.
 SLPM-65791:
   name: "S.L.A.I. - Steel Lancer Arena International"
   region: "NTSC-J"
@@ -32039,7 +32107,7 @@ SLPM-65889:
   name: "Kazoku Keikaku - Kokoro no Kizuna"
   region: "NTSC-J"
   gsHWFixes:
-    beforeDraw: "OI_PointListPalette"
+    gpuTargetCLUT: 1 # Fixes broken colors.
 SLPM-65890:
   name: "Shin Sangoku Musou 4"
   region: "NTSC-J"
@@ -32891,6 +32959,7 @@ SLPM-66117:
   gsHWFixes:
     autoFlush: 2 # Fixes lens flare.
     halfPixelOffset: 2 # Fixes blurriness.
+    getSkipCount: "GSC_MetalGearSolid3" # Fixes depth of field blur.
 SLPM-66118:
   name: "Metal Gear Solid 3 - Subsistence [with Headset] [Disc 2 of 3]"
   region: "NTSC-J"
@@ -32900,6 +32969,7 @@ SLPM-66118:
   gsHWFixes:
     autoFlush: 2 # Fixes lens flare.
     halfPixelOffset: 2 # Fixes blurriness.
+    getSkipCount: "GSC_MetalGearSolid3" # Fixes depth of field blur.
 SLPM-66119:
   name: "Metal Gear Solid 3 - Subsistence [with Headset] [Disc 3 of 3]"
   region: "NTSC-J"
@@ -32909,6 +32979,7 @@ SLPM-66119:
   gsHWFixes:
     autoFlush: 2 # Fixes lens flare.
     halfPixelOffset: 2 # Fixes blurriness.
+    getSkipCount: "GSC_MetalGearSolid3" # Fixes depth of field blur.
 SLPM-66121:
   name: "Spider-Man 2 [Taito Best]"
   region: "NTSC-J"
@@ -33132,6 +33203,7 @@ SLPM-66177:
     mipmap: 2 # Mipmap + trilinear, improves ground textures to match sw renderer.
     trilinearFiltering: 1
     halfPixelOffset: 2 # Fix effects upscaling.
+    autoFlush: 1 # Fixes broken post processing.
 SLPM-66178:
   name: "pop'n music 7 [Konami The Best]"
   region: "NTSC-J"
@@ -33304,6 +33376,7 @@ SLPM-66220:
   gsHWFixes:
     autoFlush: 2 # Fixes lens flare.
     halfPixelOffset: 2 # Fixes blurriness.
+    getSkipCount: "GSC_MetalGearSolid3" # Fixes depth of field blur.
   memcardFilters:
     - "SLPM-66117"
 SLPM-66221:
@@ -33315,6 +33388,7 @@ SLPM-66221:
   gsHWFixes:
     autoFlush: 2 # Fixes lens flare.
     halfPixelOffset: 2 # Fixes blurriness.
+    getSkipCount: "GSC_MetalGearSolid3" # Fixes depth of field blur.
   memcardFilters:
     - "SLPM-66117"
 SLPM-66222:
@@ -33326,6 +33400,7 @@ SLPM-66222:
   gsHWFixes:
     autoFlush: 2 # Fixes lens flare.
     halfPixelOffset: 2 # Fixes blurriness.
+    getSkipCount: "GSC_MetalGearSolid3" # Fixes depth of field blur.
   memcardFilters:
     - "SLPM-66117"
 SLPM-66223:
@@ -33337,6 +33412,7 @@ SLPM-66223:
   gsHWFixes:
     autoFlush: 2 # Fixes lens flare.
     halfPixelOffset: 2 # Fixes blurriness.
+    getSkipCount: "GSC_MetalGearSolid3" # Fixes depth of field blur.
   memcardFilters:
     - "SLPM-66117"
 SLPM-66224:
@@ -33348,6 +33424,7 @@ SLPM-66224:
   gsHWFixes:
     autoFlush: 2 # Fixes lens flare.
     halfPixelOffset: 2 # Fixes blurriness.
+    getSkipCount: "GSC_MetalGearSolid3" # Fixes depth of field blur.
   memcardFilters:
     - "SLPM-66117"
 SLPM-66225:
@@ -34184,10 +34261,13 @@ SLPM-66443:
   gameFixes:
     - GIFFIFOHack # Fixes flag corruptions.
 SLPM-66444:
-  name: "Spartan - Total Warrior"
+  name: "Spartan - Kodai Greece Eiyuuden"
   region: "NTSC-J"
   gameFixes:
     - EETimingHack # Fixes garbage textures flashing on the character model.
+  gsHWFixes:
+    autoFlush: 1 # Fixes missing post processing.
+    halfPixelOffset: 1 # Aligns post processing.
 SLPM-66445:
   name: "Persona 3"
   region: "NTSC-J"
@@ -35624,6 +35704,7 @@ SLPM-66794:
   gsHWFixes:
     halfPixelOffset: 2 # Fixes blurriness.
     autoFlush: 2 # Fixes lens flare.
+    getSkipCount: "GSC_MetalGearSolid3" # Fixes depth of field blur.
 SLPM-66796:
   name: "Metal Gear Solid - 20th Anniversary Collection"
   region: "NTSC-J"
@@ -36552,6 +36633,7 @@ SLPM-68516:
   gsHWFixes:
     halfPixelOffset: 2 # Fixes blurriness.
     autoFlush: 2 # Fixes lens flare.
+    getSkipCount: "GSC_MetalGearSolid3" # Fixes depth of field blur.
 SLPM-68520:
   name: "Armored Core - Last Raven [Monthly Champion magazine Special Edition]"
   region: "NTSC-J"
@@ -37609,6 +37691,9 @@ SLPS-20240:
 SLPS-20243:
   name: "New Price Go Go Golf"
   region: "NTSC-J"
+SLPS-20244:
+  name: "Magical Sports - 2000 Koushien [NewPrice]"
+  region: "NTSC-J"
 SLPS-20245:
   name: "Low Rider"
   region: "NTSC-J"
@@ -37962,6 +38047,8 @@ SLPS-20392:
 SLPS-20393:
   name: "Princess Maker 2"
   region: "NTSC-J"
+  gsHWFixes:
+    partialTargetInvalidation: 1 # Fixes full screen C32->C16 frame invalidation.
 SLPS-20394:
   name: "Suki na Mono wa Sukida Rashouganai + White Flower + Sukisyo!"
   region: "NTSC-J"
@@ -39546,6 +39633,8 @@ SLPS-25330:
 SLPS-25332:
   name: "Snow [First Limited Edition]"
   region: "NTSC-J"
+  gsHWFixes:
+    minimumBlendingLevel: 4 # Fixes transparancy.
 SLPS-25333:
   name: "Gallop Racer Lucky 7"
   region: "NTSC-J"
@@ -39610,6 +39699,8 @@ SLPS-25341:
 SLPS-25342:
   name: "Snow"
   region: "NTSC-J"
+  gsHWFixes:
+    minimumBlendingLevel: 4 # Fixes transparancy.
 SLPS-25343:
   name: "Gunslinger Girl Vol.1"
   region: "NTSC-J"
@@ -41848,7 +41939,7 @@ SLPS-29001:
         // was simply to exit the game completely.
         comment=Save Point Crash Prevention
         author=pandubz, PSI, turtleli
-        patch=1,EE,00285f44,word,2413001e
+        patch=1,EE,00285f44,word,24130064
         patch=1,EE,00285f48,word,8f85ab00
         patch=1,EE,00285f4c,word,26640000
         patch=1,EE,00285f50,word,0c0935a8
@@ -41873,7 +41964,7 @@ SLPS-29002:
         // was simply to exit the game completely.
         comment=Save Point Crash Prevention
         author=pandubz, PSI, turtleli
-        patch=1,EE,00285f44,word,2413001e
+        patch=1,EE,00285f44,word,24130064
         patch=1,EE,00285f48,word,8f85ab00
         patch=1,EE,00285f4c,word,26640000
         patch=1,EE,00285f50,word,0c0935a8
@@ -42526,7 +42617,7 @@ SLPS-73901:
         // was simply to exit the game completely.
         comment=Save Point Crash Prevention
         author=pandubz, PSI, turtleli
-        patch=1,EE,00285f44,word,2413001e
+        patch=1,EE,00285f44,word,24130064
         patch=1,EE,00285f48,word,8f85ab00
         patch=1,EE,00285f4c,word,26640000
         patch=1,EE,00285f50,word,0c0935a8
@@ -44566,7 +44657,7 @@ SLUS-20469:
         // was simply to exit the game completely.
         comment=Save Point Crash Prevention
         author=pandubz, PSI, turtleli
-        patch=1,EE,00289dac,word,2413001e
+        patch=1,EE,00289dac,word,24130064
         patch=1,EE,00289db0,word,8f85af40
         patch=1,EE,00289db4,word,26640000
         patch=1,EE,00289db8,word,0c093746
@@ -46785,6 +46876,7 @@ SLUS-20915:
   gsHWFixes:
     halfPixelOffset: 2 # Fixes blurriness.
     autoFlush: 2 # Fixes lens flare.
+    getSkipCount: "GSC_MetalGearSolid3" # Fixes depth of field blur.
 SLUS-20916:
   name: "Dance Dance Revolution EXTREME"
   region: "NTSC-U"
@@ -48386,6 +48478,9 @@ SLUS-21212:
   compat: 5
   gameFixes:
     - EETimingHack # Fixes garbage textures flashing on the character model.
+  gsHWFixes:
+    autoFlush: 1 # Fixes missing post processing.
+    halfPixelOffset: 1 # Aligns post processing.
 SLUS-21213:
   name: "Madden NFL '06"
   region: "NTSC-U"
@@ -48552,6 +48647,7 @@ SLUS-21236:
   compat: 5
   gsHWFixes:
     alignSprite: 1 # Fixes vertical lines.
+    wildArmsHack: 1 # Fixes double image.
 SLUS-21237:
   name: "AND 1 Streetball"
   region: "NTSC-U"
@@ -48603,6 +48699,7 @@ SLUS-21243:
   gsHWFixes:
     autoFlush: 2 # Fixes lens flare.
     halfPixelOffset: 2 # Fixes blurriness.
+    getSkipCount: "GSC_MetalGearSolid3" # Fixes depth of field blur.
   memcardFilters:
     - "SLUS-21359"
 SLUS-21244:
@@ -48802,6 +48899,7 @@ SLUS-21273:
     mipmap: 2 # Mipmap + trilinear, improves ground textures to match sw renderer.
     trilinearFiltering: 1
     halfPixelOffset: 2 # Fix effects upscaling.
+    autoFlush: 1 # Fixes broken post processing.
 SLUS-21274:
   name: "OutRun 2006 - Coast 2 Coast"
   region: "NTSC-U"
@@ -49326,6 +49424,7 @@ SLUS-21359:
   gsHWFixes:
     autoFlush: 2 # Fixes lens flare.
     halfPixelOffset: 2 # Fixes blurriness.
+    getSkipCount: "GSC_MetalGearSolid3" # Fixes depth of field blur.
 SLUS-21360:
   name: "Metal Gear Solid 3 - Subsistence [Disc 3 of 3]"
   region: "NTSC-U"
@@ -49335,6 +49434,7 @@ SLUS-21360:
   gsHWFixes:
     autoFlush: 2 # Fixes lens flare.
     halfPixelOffset: 2 # Fixes blurriness.
+    getSkipCount: "GSC_MetalGearSolid3" # Fixes depth of field blur.
   memcardFilters:
     - "SLUS-21359"
 SLUS-21361:

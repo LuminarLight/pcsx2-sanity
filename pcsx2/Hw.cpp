@@ -22,6 +22,8 @@
 #include "USB/USB.h"
 #include "x86/newVif.h"
 
+#include "common/WrappedMemCopy.h"
+
 #include "fmt/core.h"
 
 using namespace R5900;
@@ -58,7 +60,7 @@ void hwReset()
 {
 	hwInit();
 
-	memzero( eeHw );
+	std::memset(eeHw, 0, sizeof(eeHw));
 
 	psHu32(SBUS_F260) = 0x1D000060;
 

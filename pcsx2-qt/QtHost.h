@@ -137,7 +137,8 @@ Q_SIGNALS:
 	void onVMStopped();
 
 	/// Provided by the host; called when the running executable changes.
-	void onGameChanged(const QString& path, const QString& elf_override, const QString& serial, const QString& name, quint32 crc);
+	void onGameChanged(const QString& title, const QString& elf_override, const QString& disc_path,
+		const QString& serial, quint32 disc_crc, quint32 crc);
 
 	void onInputDevicesEnumerated(const QList<QPair<QString, QString>>& devices);
 	void onInputDeviceConnected(const QString& identifier, const QString& device_name);
@@ -215,6 +216,9 @@ namespace QtHost
 	/// Default theme name for the platform.
 	const char* GetDefaultThemeName();
 
+	/// Default language for the platform.
+	const char* GetDefaultLanguage();
+
 	/// Sets application theme according to settings.
 	void UpdateApplicationTheme();
 
@@ -232,6 +236,12 @@ namespace QtHost
 
 	/// Executes a function on the UI thread.
 	void RunOnUIThread(const std::function<void()>& func, bool block = false);
+
+	/// Returns a list of supported languages and codes (suffixes for translation files).
+	std::vector<std::pair<QString, QString>> GetAvailableLanguageList();
+
+	/// Call when the language changes.
+	void InstallTranslator();
 
 	/// Returns the application name and version, optionally including debug/devel config indicator.
 	QString GetAppNameAndVersion();

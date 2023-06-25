@@ -1,5 +1,5 @@
 /*  PCSX2 - PS2 Emulator for PCs
- *  Copyright (C) 2002-2022  PCSX2 Dev Team
+ *  Copyright (C) 2002-2023 PCSX2 Dev Team
  *
  *  PCSX2 is free software: you can redistribute it and/or modify it under the terms
  *  of the GNU Lesser General Public License as published by the Free Software Found-
@@ -15,8 +15,9 @@
 
 #include "PrecompiledHeader.h"
 
-#include "SaveState.h"
 #include "Counters.h"
+#include "MTGS.h"
+#include "SaveState.h"
 
 void SaveStateBase::InputRecordingFreeze()
 {
@@ -78,7 +79,7 @@ bool InputRecording::create(const std::string& fileName, const bool fromSaveStat
 
 	m_file.setEmulatorVersion();
 	m_file.setAuthor(authorName);
-	m_file.setGameName(resolveGameName());
+	m_file.setGameName(VMManager::GetTitle());
 	m_file.writeHeader();
 	initializeState();
 	InputRec::log("Started new input recording");
@@ -129,9 +130,9 @@ bool InputRecording::play(const std::string& filename)
 	initializeState();
 	InputRec::log("Replaying input recording");
 	m_file.logRecordingMetadata();
-	if (resolveGameName() != m_file.getGameName())
+	if (VMManager::GetTitle() != m_file.getGameName())
 	{
-		InputRec::consoleLog(fmt::format("Input recording was possibly constructed for a different game. Expected: {}, Actual: {}", m_file.getGameName(), resolveGameName()));
+		InputRec::consoleLog(fmt::format("Input recording was possibly constructed for a different game. Expected: {}, Actual: {}", m_file.getGameName(), VMManager::GetTitle()));
 	}
 	return true;
 }
@@ -146,7 +147,7 @@ void InputRecording::closeActiveFile()
 	{
 		m_is_active = false;
 		InputRec::log("Input recording stopped");
-		GetMTGS().PresentCurrentFrame();
+		MTGS::PresentCurrentFrame();
 	}
 	else
 	{
@@ -227,21 +228,6 @@ void InputRecording::processRecordQueue()
 		m_recordingQueue.front()();
 		m_recordingQueue.pop();
 	}
-}
-
-std::string InputRecording::resolveGameName()
-{
-	std::string gameName;
-	const std::string gameKey = SysGetDiscID();
-	if (!gameKey.empty())
-	{
-		auto game = GameDatabase::findGame(gameKey);
-		if (game)
-		{
-			gameName = fmt::format("{} ({})", game->name, game->region);
-		}
-	}
-	return !gameName.empty() ? gameName : VMManager::GetGameName();
 }
 
 void InputRecording::incFrameCounter()

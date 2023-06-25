@@ -40,13 +40,13 @@
 #include "pcsx2/Achievements.h"
 #include "pcsx2/CDVD/CDVD.h"
 #include "pcsx2/GS.h"
-#include "pcsx2/GS/GS.h"
 #include "pcsx2/GSDumpReplayer.h"
 #include "pcsx2/Host.h"
 #include "pcsx2/INISettingsInterface.h"
 #include "pcsx2/ImGui/ImGuiManager.h"
 #include "pcsx2/Input/InputManager.h"
 #include "pcsx2/LogSink.h"
+#include "pcsx2/MTGS.h"
 #include "pcsx2/PAD/Host/PAD.h"
 #include "pcsx2/PerformanceMetrics.h"
 #include "pcsx2/VMManager.h"
@@ -69,7 +69,6 @@ static constexpr u32 WINDOW_WIDTH = 640;
 static constexpr u32 WINDOW_HEIGHT = 480;
 
 static MemorySettingsInterface s_settings_interface;
-alignas(16) static SysMtgsThread s_mtgs_thread;
 
 static std::string s_output_prefix;
 static s32 s_loop_count = 1;
@@ -293,8 +292,8 @@ void Host::OnVMResumed()
 {
 }
 
-void Host::OnGameChanged(const std::string& disc_path, const std::string& elf_override, const std::string& game_serial,
-	const std::string& game_name, u32 game_crc)
+void Host::OnGameChanged(const std::string& title, const std::string& elf_override, const std::string& disc_path,
+	const std::string& disc_serial, u32 disc_crc, u32 current_crc)
 {
 }
 
@@ -361,15 +360,6 @@ std::optional<std::string> InputManager::ConvertHostKeyboardCodeToString(u32 cod
 {
 	return std::nullopt;
 }
-
-SysMtgsThread& GetMTGS()
-{
-	return s_mtgs_thread;
-}
-
-//////////////////////////////////////////////////////////////////////////
-// Interface Stuff
-//////////////////////////////////////////////////////////////////////////
 
 BEGIN_HOTKEY_LIST(g_host_hotkeys)
 END_HOTKEY_LIST()
@@ -651,11 +641,23 @@ int main(int argc, char* argv[])
 void Host::VSyncOnCPUThread()
 {
 	// update GS thread copy of frame number
-	GetMTGS().RunOnGSThread([frame_number = GSDumpReplayer::GetFrameNumber()]() { s_dump_frame_number = frame_number; });
-	GetMTGS().RunOnGSThread([loop_number = GSDumpReplayer::GetLoopCount()]() { s_loop_number = loop_number; });
+	MTGS::RunOnGSThread([frame_number = GSDumpReplayer::GetFrameNumber()]() { s_dump_frame_number = frame_number; });
+	MTGS::RunOnGSThread([loop_number = GSDumpReplayer::GetLoopCount()]() { s_loop_number = loop_number; });
 
 	// process any window messages (but we shouldn't really have any)
 	GSRunner::PumpPlatformMessages();
+}
+
+s32 Host::Internal::GetTranslatedStringImpl(
+	const std::string_view& context, const std::string_view& msg, char* tbuf, size_t tbuf_space)
+{
+	if (msg.size() > tbuf_space)
+		return -1;
+	else if (msg.empty())
+		return 0;
+
+	std::memcpy(tbuf, msg.data(), msg.size());
+	return static_cast<s32>(msg.size());
 }
 
 //////////////////////////////////////////////////////////////////////////

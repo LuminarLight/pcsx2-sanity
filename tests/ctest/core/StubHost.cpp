@@ -1,5 +1,5 @@
 /*  PCSX2 - PS2 Emulator for PCs
- *  Copyright (C) 2002-2021 PCSX2 Dev Team
+ *  Copyright (C) 2002-2023 PCSX2 Dev Team
  *
  *  PCSX2 is free software: you can redistribute it and/or modify it under the terms
  *  of the GNU Lesser General Public License as published by the Free Software Found-
@@ -13,13 +13,12 @@
  *  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include "pcsx2/Achievements.h"
+#include "pcsx2/GS.h"
+#include "pcsx2/Host.h"
 #include "pcsx2/ImGui/ImGuiManager.h"
 #include "pcsx2/Input/InputManager.h"
-#include "pcsx2/GS.h"
-#include "pcsx2/GS/GS.h"
-#include "pcsx2/Host.h"
 #include "pcsx2/VMManager.h"
-#include "pcsx2/Achievements.h"
 
 void Host::CommitBaseSettingChanges()
 {
@@ -137,8 +136,8 @@ void Host::OnVMResumed()
 {
 }
 
-void Host::OnGameChanged(const std::string& disc_path, const std::string& elf_override, const std::string& game_serial,
-	const std::string& game_name, u32 game_crc)
+void Host::OnGameChanged(const std::string& title, const std::string& elf_override, const std::string& disc_path,
+		const std::string& disc_serial, u32 disc_crc, u32 current_crc)
 {
 }
 
@@ -191,6 +190,18 @@ void Host::VSyncOnCPUThread()
 {
 }
 
+s32 Host::Internal::GetTranslatedStringImpl(
+	const std::string_view& context, const std::string_view& msg, char* tbuf, size_t tbuf_space)
+{
+	if (msg.size() > tbuf_space)
+		return -1;
+	else if (msg.empty())
+		return 0;
+
+	std::memcpy(tbuf, msg.data(), msg.size());
+	return static_cast<s32>(msg.size());
+}
+
 #ifdef ENABLE_ACHIEVEMENTS
 void Host::OnAchievementsRefreshed()
 {
@@ -207,15 +218,5 @@ std::optional<std::string> InputManager::ConvertHostKeyboardCodeToString(u32 cod
 	return std::nullopt;
 }
 
-SysMtgsThread& GetMTGS()
-{
-	throw std::exception();
-}
-
-//////////////////////////////////////////////////////////////////////////
-// Interface Stuff
-//////////////////////////////////////////////////////////////////////////
-
-const IConsoleWriter* PatchesCon = &Console;
 BEGIN_HOTKEY_LIST(g_host_hotkeys)
 END_HOTKEY_LIST()

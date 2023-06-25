@@ -128,6 +128,7 @@ void ControllerSettingsDialog::onNewProfileClicked()
 			// from global
 			auto lock = Host::GetSettingsLock();
 			PAD::CopyConfiguration(&temp_si, *Host::Internal::GetBaseSettingsLayer(), true, true, false);
+			USB::CopyConfiguration(&temp_si, *Host::Internal::GetBaseSettingsLayer(), true, true);
 		}
 		else
 		{
@@ -135,6 +136,7 @@ void ControllerSettingsDialog::onNewProfileClicked()
 			const bool copy_hotkey_bindings = m_profile_interface->GetBoolValue("Pad", "UseProfileHotkeyBindings", false);
 			temp_si.SetBoolValue("Pad", "UseProfileHotkeyBindings", copy_hotkey_bindings);
 			PAD::CopyConfiguration(&temp_si, *m_profile_interface, true, true, copy_hotkey_bindings);
+			USB::CopyConfiguration(&temp_si, *m_profile_interface, true, true);
 		}
 	}
 
@@ -163,6 +165,7 @@ void ControllerSettingsDialog::onLoadProfileClicked()
 	{
 		auto lock = Host::GetSettingsLock();
 		PAD::CopyConfiguration(Host::Internal::GetBaseSettingsLayer(), *m_profile_interface, true, true, false);
+		USB::CopyConfiguration(Host::Internal::GetBaseSettingsLayer(), *m_profile_interface, true, true);
 	}
 	Host::CommitBaseSettingChanges();
 
@@ -398,7 +401,7 @@ void ControllerSettingsDialog::createWidgets()
 		m_ui.settingsContainer->addWidget(m_port_bindings[global_slot]);
 
 		const PAD::ControllerInfo* ci = PAD::GetControllerInfo(m_port_bindings[global_slot]->getControllerType());
-		const QString display_name(ci ? QString::fromUtf8(ci->display_name) : QStringLiteral("Unknown"));
+		const QString display_name(ci ? qApp->translate("Pad", ci->display_name) : QStringLiteral("Unknown"));
 
 		QListWidgetItem* item = new QListWidgetItem();
 		//: Controller Port is an official term from Sony. Find the official translation for your language inside the console's manual.
@@ -454,7 +457,7 @@ void ControllerSettingsDialog::updateListDescription(u32 global_slot, Controller
 			const bool mtap_enabled = getBoolValue("Pad", (port == 0) ? "MultitapPort1" : "MultitapPort2", false);
 
 			const PAD::ControllerInfo* ci = PAD::GetControllerInfo(widget->getControllerType());
-			const QString display_name(ci ? QString::fromUtf8(ci->display_name) : QStringLiteral("Unknown"));
+			const QString display_name(ci ? qApp->translate("Pad", ci->display_name) : QStringLiteral("Unknown"));
 
 			//: Controller Port is an official term from Sony. Find the official translation for your language inside the console's manual.
 			item->setText(mtap_enabled ? (tr("Controller Port %1%2\n%3").arg(port + 1).arg(s_mtap_slot_names[slot]).arg(display_name)) :

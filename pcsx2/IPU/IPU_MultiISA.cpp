@@ -26,7 +26,8 @@
 #include "IPU/IPUdma.h"
 #include "IPU/yuv2rgb.h"
 #include "IPU/IPU_MultiISA.h"
-#include "common/MemsetFast.inl"
+
+#include "common/General.h"
 
 // the IPU is fixed to 16 byte strides (128-bit / QWC resolution):
 static const uint decoder_stride = 16;
@@ -960,7 +961,7 @@ __ri static bool slice_non_intra_DCT(s16 * const dest, const int stride, const b
 
 	if (!skip)
 	{
-		memzero_sse_a(decoder.DCTblock);
+		std::memset(decoder.DCTblock, 0, sizeof(decoder.DCTblock));
 	}
 
 	if (!get_non_intra_block(&last))
@@ -1033,8 +1034,8 @@ __ri static bool mpeg2sliceIDEC()
 				}
 
 				decoder.coded_block_pattern = 0x3F;//all 6 blocks
-				memzero_sse_a(mb8);
-				memzero_sse_a(rgb32);
+				std::memset(&mb8, 0, sizeof(mb8));
+				std::memset(&rgb32, 0, sizeof(rgb32));
 				[[fallthrough]];
 
 			case 1:
@@ -1115,7 +1116,9 @@ __ri static bool mpeg2sliceIDEC()
 					ipu_dither(rgb32, rgb16, decoder.dte);
 					decoder.SetOutputTo(rgb16);
 				}
-				[[fallthrough]];
+				ProcessedData += decoder.ipu0_data;
+				ipu_cmd.pos[1] = 2;
+				return false;
 
 			case 2:
 			{
@@ -1282,8 +1285,8 @@ __fi static bool mpeg2_slice()
 
 		ipuRegs.ctrl.ECD = 0;
 		ipuRegs.top = 0;
-		memzero_sse_a(mb8);
-		memzero_sse_a(mb16);
+		std::memset(&mb8, 0, sizeof(mb8));
+		std::memset(&mb16, 0, sizeof(mb16));
 		[[fallthrough]];
 
 	case 1:
@@ -1497,7 +1500,9 @@ __fi static bool mpeg2_slice()
 		coded_block_pattern = decoder.coded_block_pattern;
 
 		decoder.SetOutputTo(mb16);
-		[[fallthrough]];
+		ProcessedData += decoder.ipu0_data;
+		ipu_cmd.pos[0] = 3;
+		return false;
 
 	case 3:
 	{

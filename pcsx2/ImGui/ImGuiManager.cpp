@@ -18,7 +18,6 @@
 #include "GS/Renderers/Common/GSDevice.h"
 #include "Config.h"
 #include "Counters.h"
-#include "GS.h"
 #include "GS/GS.h"
 #include "Host.h"
 #include "IconsFontAwesome5.h"
@@ -27,10 +26,12 @@
 #include "ImGui/ImGuiManager.h"
 #include "ImGui/ImGuiOverlays.h"
 #include "Input/InputManager.h"
+#include "MTGS.h"
 #include "PerformanceMetrics.h"
 #include "Recording/InputRecording.h"
 #include "VMManager.h"
 
+#include "common/FileSystem.h"
 #include "common/StringUtil.h"
 #include "common/Timer.h"
 
@@ -60,6 +61,9 @@ namespace ImGuiManager
 
 static float s_global_scale = 1.0f;
 
+static std::string s_font_path;
+static const ImWchar* s_font_range = nullptr;
+
 static ImFont* s_standard_font;
 static ImFont* s_fixed_font;
 static ImFont* s_medium_font;
@@ -81,6 +85,18 @@ static std::unordered_map<u32, ImGuiKey> s_imgui_key_map;
 
 // need to keep track of this, so we can reinitialize on renderer switch
 static bool s_fullscreen_ui_was_initialized = false;
+
+void ImGuiManager::SetFontPath(std::string path)
+{
+	s_font_path = std::move(path);
+	s_standard_font_data = {};
+}
+
+void ImGuiManager::SetFontRange(const u16* range)
+{
+	s_font_range = range;
+	s_standard_font_data = {};
+}
 
 bool ImGuiManager::Initialize()
 {
@@ -333,7 +349,9 @@ bool ImGuiManager::LoadFontData()
 {
 	if (s_standard_font_data.empty())
 	{
-		std::optional<std::vector<u8>> font_data = Host::ReadResourceFile("fonts/Roboto-Regular.ttf");
+		std::optional<std::vector<u8>> font_data = s_font_path.empty() ?
+													   Host::ReadResourceFile("fonts/Roboto-Regular.ttf") :
+													   FileSystem::ReadBinaryFile(s_font_path.c_str());
 		if (!font_data.has_value())
 			return false;
 
@@ -393,7 +411,7 @@ ImFont* ImGuiManager::AddTextFont(float size)
 	ImFontConfig cfg;
 	cfg.FontDataOwnedByAtlas = false;
 	return ImGui::GetIO().Fonts->AddFontFromMemoryTTF(
-		s_standard_font_data.data(), static_cast<int>(s_standard_font_data.size()), size, &cfg, default_ranges);
+		s_standard_font_data.data(), static_cast<int>(s_standard_font_data.size()), size, &cfg, s_font_range ? s_font_range : default_ranges);
 }
 
 ImFont* ImGuiManager::AddFixedFont(float size)
@@ -533,24 +551,6 @@ void Host::AddIconOSDMessage(std::string key, const char* icon, const std::strin
 
 	std::unique_lock<std::mutex> lock(s_osd_messages_lock);
 	s_osd_posted_messages.push_back(std::move(msg));
-}
-
-void Host::AddFormattedOSDMessage(float duration, const char* format, ...)
-{
-	std::va_list ap;
-	va_start(ap, format);
-	std::string ret = StringUtil::StdStringFromFormatV(format, ap);
-	va_end(ap);
-	return AddKeyedOSDMessage(std::string(), std::move(ret), duration);
-}
-
-void Host::AddKeyedFormattedOSDMessage(std::string key, float duration, const char* format, ...)
-{
-	std::va_list ap;
-	va_start(ap, format);
-	std::string ret = StringUtil::StdStringFromFormatV(format, ap);
-	va_end(ap);
-	return AddKeyedOSDMessage(std::move(key), std::move(ret), duration);
 }
 
 void Host::RemoveKeyedOSDMessage(std::string key)
@@ -713,7 +713,7 @@ void ImGuiManager::AddTextInput(std::string str)
 
 	// Has to go through the CPU -> GS thread :(
 	Host::RunOnCPUThread([str = std::move(str)]() {
-		GetMTGS().RunOnGSThread([str = std::move(str)]() {
+		MTGS::RunOnGSThread([str = std::move(str)]() {
 			if (!ImGui::GetCurrentContext())
 				return;
 
@@ -737,7 +737,7 @@ bool ImGuiManager::ProcessPointerButtonEvent(InputBindingKey key, float value)
 		return false;
 
 	// still update state anyway
-	GetMTGS().RunOnGSThread([button = key.data, down = (value != 0.0f)]() { ImGui::GetIO().AddMouseButtonEvent(button, down); });
+	MTGS::RunOnGSThread([button = key.data, down = (value != 0.0f)]() { ImGui::GetIO().AddMouseButtonEvent(button, down); });
 
 	return s_imgui_wants_mouse.load(std::memory_order_acquire);
 }
@@ -749,7 +749,7 @@ bool ImGuiManager::ProcessPointerAxisEvent(InputBindingKey key, float value)
 
 	// still update state anyway
 	const bool horizontal = (key.data == static_cast<u32>(InputPointerAxis::WheelX));
-	GetMTGS().RunOnGSThread([wheel_x = horizontal ? value : 0.0f, wheel_y = horizontal ? 0.0f : value]() {
+	MTGS::RunOnGSThread([wheel_x = horizontal ? value : 0.0f, wheel_y = horizontal ? 0.0f : value]() {
 		ImGui::GetIO().AddMouseWheelEvent(wheel_x, wheel_y);
 	});
 
@@ -763,7 +763,7 @@ bool ImGuiManager::ProcessHostKeyEvent(InputBindingKey key, float value)
 		return false;
 
 	// still update state anyway
-	GetMTGS().RunOnGSThread([imkey = iter->second, down = (value != 0.0f)]() { ImGui::GetIO().AddKeyEvent(imkey, down); });
+	MTGS::RunOnGSThread([imkey = iter->second, down = (value != 0.0f)]() { ImGui::GetIO().AddKeyEvent(imkey, down); });
 
 	return s_imgui_wants_keyboard.load(std::memory_order_acquire);
 }
@@ -805,7 +805,7 @@ bool ImGuiManager::ProcessGenericInputEvent(GenericInputBinding key, float value
 	if (static_cast<u32>(key) >= std::size(key_map) || key_map[static_cast<u32>(key)] == ImGuiKey_None)
 		return false;
 
-	GetMTGS().RunOnGSThread(
+	MTGS::RunOnGSThread(
 		[key = key_map[static_cast<u32>(key)], value]() { ImGui::GetIO().AddKeyAnalogEvent(key, (value > 0.0f), value); });
 
 	return true;

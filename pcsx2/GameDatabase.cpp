@@ -60,22 +60,17 @@ std::string GameDatabaseSchema::GameEntry::memcardFiltersAsString() const
 
 const std::string* GameDatabaseSchema::GameEntry::findPatch(u32 crc) const
 {
-	Console.WriteLn(fmt::format("[GameDB] Searching for patch with CRC '{:08X}'", crc));
+	if (crc == 0)
+		return nullptr;
 
 	auto it = patches.find(crc);
 	if (it != patches.end())
-	{
-		Console.WriteLn(fmt::format("[GameDB] Found patch with CRC '{:08X}'", crc));
 		return &it->second;
-	}
 
 	it = patches.find(0);
 	if (it != patches.end())
-	{
-		Console.WriteLn("[GameDB] Found and falling back to default patch");
 		return &it->second;
-	}
-	Console.WriteLn("[GameDB] No CRC-specific patch or default patch found");
+
 	return nullptr;
 }
 
@@ -416,13 +411,11 @@ bool GameDatabaseSchema::isUserHackHWFix(GSHWFixId id)
 	}
 }
 
-u32 GameDatabaseSchema::GameEntry::applyGameFixes(Pcsx2Config& config, bool applyAuto) const
+void GameDatabaseSchema::GameEntry::applyGameFixes(Pcsx2Config& config, bool applyAuto) const
 {
 	// Only apply core game fixes if the user has enabled them.
 	if (!applyAuto)
 		Console.Warning("[GameDB] Game Fixes are disabled");
-
-	u32 num_applied_fixes = 0;
 
 	if (eeRoundMode != GameDatabaseSchema::RoundMode::Undefined)
 	{
@@ -433,7 +426,6 @@ u32 GameDatabaseSchema::GameEntry::applyGameFixes(Pcsx2Config& config, bool appl
 			{
 				Console.WriteLn("(GameDB) Changing EE/FPU roundmode to %d [%s]", eeRM, EnumToString(eeRM));
 				config.Cpu.sseMXCSR.SetRoundMode(eeRM);
-				num_applied_fixes++;
 			}
 			else
 				Console.Warning("[GameDB] Skipping changing EE/FPU roundmode to %d [%s]", eeRM, EnumToString(eeRM));
@@ -449,7 +441,6 @@ u32 GameDatabaseSchema::GameEntry::applyGameFixes(Pcsx2Config& config, bool appl
 			{
 				Console.WriteLn("(GameDB) Changing VU0 roundmode to %d [%s]", vuRM, EnumToString(vuRM));
 				config.Cpu.sseVU0MXCSR.SetRoundMode(vuRM);
-				num_applied_fixes++;
 			}
 			else
 				Console.Warning("[GameDB] Skipping changing VU0 roundmode to %d [%s]", vuRM, EnumToString(vuRM));
@@ -465,7 +456,6 @@ u32 GameDatabaseSchema::GameEntry::applyGameFixes(Pcsx2Config& config, bool appl
 			{
 				Console.WriteLn("(GameDB) Changing VU1 roundmode to %d [%s]", vuRM, EnumToString(vuRM));
 				config.Cpu.sseVU1MXCSR.SetRoundMode(vuRM);
-				num_applied_fixes++;
 			}
 			else
 				Console.Warning("[GameDB] Skipping changing VU1 roundmode to %d [%s]", vuRM, EnumToString(vuRM));
@@ -481,7 +471,6 @@ u32 GameDatabaseSchema::GameEntry::applyGameFixes(Pcsx2Config& config, bool appl
 			config.Cpu.Recompiler.fpuOverflow = (clampMode >= 1);
 			config.Cpu.Recompiler.fpuExtraOverflow = (clampMode >= 2);
 			config.Cpu.Recompiler.fpuFullMode = (clampMode >= 3);
-			num_applied_fixes++;
 		}
 		else
 			Console.Warning("[GameDB] Skipping changing EE/FPU clamp mode [mode=%d]", clampMode);
@@ -496,7 +485,6 @@ u32 GameDatabaseSchema::GameEntry::applyGameFixes(Pcsx2Config& config, bool appl
 			config.Cpu.Recompiler.vu0Overflow = (clampMode >= 1);
 			config.Cpu.Recompiler.vu0ExtraOverflow = (clampMode >= 2);
 			config.Cpu.Recompiler.vu0SignOverflow = (clampMode >= 3);
-			num_applied_fixes++;
 		}
 		else
 			Console.Warning("[GameDB] Skipping changing VU0 clamp mode [mode=%d]", clampMode);
@@ -511,7 +499,6 @@ u32 GameDatabaseSchema::GameEntry::applyGameFixes(Pcsx2Config& config, bool appl
 			config.Cpu.Recompiler.vu1Overflow = (clampMode >= 1);
 			config.Cpu.Recompiler.vu1ExtraOverflow = (clampMode >= 2);
 			config.Cpu.Recompiler.vu1SignOverflow = (clampMode >= 3);
-			num_applied_fixes++;
 		}
 		else
 			Console.Warning("[GameDB] Skipping changing VU1 clamp mode [mode=%d]", clampMode);
@@ -530,7 +517,6 @@ u32 GameDatabaseSchema::GameEntry::applyGameFixes(Pcsx2Config& config, bool appl
 		// are effectively booleans like the gamefixes
 		config.Speedhacks.Set(it.first, mode);
 		Console.WriteLn("(GameDB) Setting Speedhack '%s' to [mode=%d]", EnumToString(it.first), mode);
-		num_applied_fixes++;
 	}
 
 	// TODO - config - this could be simplified with maps instead of bitfields and enums
@@ -544,14 +530,11 @@ u32 GameDatabaseSchema::GameEntry::applyGameFixes(Pcsx2Config& config, bool appl
 		// if the fix is present, it is said to be enabled
 		config.Gamefixes.Set(id, true);
 		Console.WriteLn("(GameDB) Enabled Gamefix: %s", EnumToString(id));
-		num_applied_fixes++;
 
 		// The LUT is only used for 1 game so we allocate it only when the gamefix is enabled (save 4MB)
 		if (id == Fix_GoemonTlbMiss && true)
 			vtlb_Alloc_Ppmap();
 	}
-
-	return num_applied_fixes;
 }
 
 bool GameDatabaseSchema::GameEntry::configMatchesHWFix(const Pcsx2Config::GSOptions& config, GSHWFixId id, int value)
@@ -668,7 +651,7 @@ bool GameDatabaseSchema::GameEntry::configMatchesHWFix(const Pcsx2Config::GSOpti
 	}
 }
 
-u32 GameDatabaseSchema::GameEntry::applyGSHardwareFixes(Pcsx2Config::GSOptions& config) const
+void GameDatabaseSchema::GameEntry::applyGSHardwareFixes(Pcsx2Config::GSOptions& config) const
 {
 	std::string disabled_fixes;
 
@@ -677,7 +660,6 @@ u32 GameDatabaseSchema::GameEntry::applyGSHardwareFixes(Pcsx2Config::GSOptions& 
 	if (!apply_auto_fixes)
 		Console.Warning("[GameDB] Manual GS hardware renderer fixes are enabled, not using automatic hardware renderer fixes from GameDB.");
 
-	u32 num_applied_fixes = 0;
 	for (const auto& [id, value] : gsHWFixes)
 	{
 		if (isUserHackHWFix(id) && !apply_auto_fixes)
@@ -873,11 +855,14 @@ u32 GameDatabaseSchema::GameEntry::applyGSHardwareFixes(Pcsx2Config::GSOptions& 
 				if (value >= 0 && value <= static_cast<int>(AccBlendLevel::Maximum) && static_cast<int>(EmuConfig.GS.AccurateBlendingUnit) < value)
 				{
 					Host::AddKeyedOSDMessage("HWBlendingWarning",
-						fmt::format(ICON_FA_PAINT_BRUSH " Current Blending Accuracy is {}.\n"
-														"Recommended Blending Accuracy for this game is {}.\n"
-														"You can adjust the blending level in Game Properties to improve\n"
-														"graphical quality, but this will increase system requirements.",
-							Pcsx2Config::GSOptions::BlendingLevelNames[static_cast<int>(EmuConfig.GS.AccurateBlendingUnit)],
+						fmt::format(TRANSLATE_SV("GameDatabase",
+										"{0} Current Blending Accuracy is {1}.\n"
+										"Recommended Blending Accuracy for this game is {2}.\n"
+										"You can adjust the blending level in Game Properties to improve\n"
+										"graphical quality, but this will increase system requirements."),
+							ICON_FA_PAINT_BRUSH,
+							Pcsx2Config::GSOptions::BlendingLevelNames[static_cast<int>(
+								EmuConfig.GS.AccurateBlendingUnit)],
 							Pcsx2Config::GSOptions::BlendingLevelNames[value]),
 						Host::OSD_WARNING_DURATION);
 				}
@@ -901,7 +886,6 @@ u32 GameDatabaseSchema::GameEntry::applyGSHardwareFixes(Pcsx2Config::GSOptions& 
 		}
 
 		Console.WriteLn("[GameDB] Enabled GS Hardware Fix: %s to [mode=%d]", getHWFixName(id), value);
-		num_applied_fixes++;
 	}
 
 	// fixup skipdraw range just in case the db has a bad range (but the linter should catch this)
@@ -910,16 +894,15 @@ u32 GameDatabaseSchema::GameEntry::applyGSHardwareFixes(Pcsx2Config::GSOptions& 
 	if (!disabled_fixes.empty())
 	{
 		Host::AddKeyedOSDMessage("HWFixesWarning",
-			fmt::format(ICON_FA_MAGIC " Manual GS hardware renderer fixes are enabled, automatic fixes were not applied:\n{}",
-				disabled_fixes),
+			fmt::format(ICON_FA_MAGIC " {}\n{}",
+				TRANSLATE_SV("GameDatabase", "Manual GS hardware renderer fixes are enabled, automatic fixes were not applied:"),
+					disabled_fixes),
 			Host::OSD_ERROR_DURATION);
 	}
 	else
 	{
 		Host::RemoveKeyedOSDMessage("HWFixesWarning");
 	}
-
-	return num_applied_fixes;
 }
 
 void GameDatabase::initDatabase()

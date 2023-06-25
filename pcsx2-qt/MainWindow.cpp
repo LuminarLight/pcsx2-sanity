@@ -41,6 +41,7 @@
 #include "pcsx2/GameList.h"
 #include "pcsx2/Host.h"
 #include "pcsx2/LogSink.h"
+#include "pcsx2/MTGS.h"
 #include "pcsx2/PerformanceMetrics.h"
 #include "pcsx2/Recording/InputRecording.h"
 #include "pcsx2/Recording/InputRecordingControls.h"
@@ -709,7 +710,7 @@ void MainWindow::updateEmulationActions(bool starting, bool running, bool stoppi
 void MainWindow::updateDisplayRelatedActions(bool has_surface, bool render_to_main, bool fullscreen)
 {
 	// rendering to main, or switched to gamelist/grid
-	m_ui.actionViewSystemDisplay->setEnabled((has_surface && render_to_main) || (!has_surface && GetMTGS().IsOpen()));
+	m_ui.actionViewSystemDisplay->setEnabled((has_surface && render_to_main) || (!has_surface && MTGS::IsOpen()));
 	m_ui.menuWindowSize->setEnabled(has_surface && !fullscreen);
 	m_ui.actionFullscreen->setEnabled(has_surface);
 
@@ -746,9 +747,9 @@ void MainWindow::updateWindowTitle()
 {
 	QString suffix(QtHost::GetAppConfigSuffix());
 	QString main_title(QtHost::GetAppNameAndVersion() + suffix);
-	QString display_title(m_current_game_name + suffix);
+	QString display_title(m_current_title + suffix);
 
-	if (!s_vm_valid || m_current_game_name.isEmpty())
+	if (!s_vm_valid || m_current_title.isEmpty())
 		display_title = main_title;
 	else if (isRenderingToMain())
 		main_title = display_title;
@@ -821,7 +822,7 @@ bool MainWindow::isShowingGameList() const
 
 bool MainWindow::isRenderingFullscreen() const
 {
-	if (!GetMTGS().IsOpen() || !m_display_widget)
+	if (!MTGS::IsOpen() || !m_display_widget)
 		return false;
 
 	return getDisplayContainer()->isFullScreen();
@@ -920,7 +921,7 @@ bool MainWindow::requestShutdown(bool allow_confirm, bool allow_save_to_state, b
 		return true;
 
 	// If we don't have a crc, we can't save state.
-	allow_save_to_state &= (m_current_game_crc != 0);
+	allow_save_to_state &= (m_current_disc_crc != 0);
 	bool save_state = allow_save_to_state && default_save_to_state;
 
 	// Only confirm on UI thread because we need to display a msgbox.
@@ -1213,15 +1214,15 @@ void MainWindow::onChangeDiscMenuAboutToHide()
 void MainWindow::onLoadStateMenuAboutToShow()
 {
 	m_ui.menuLoadState->clear();
-	updateSaveStateMenusEnableState(!m_current_game_serial.isEmpty());
-	populateLoadStateMenu(m_ui.menuLoadState, m_current_disc_path, m_current_game_serial, m_current_game_crc);
+	updateSaveStateMenusEnableState(!m_current_disc_serial.isEmpty());
+	populateLoadStateMenu(m_ui.menuLoadState, m_current_disc_path, m_current_disc_serial, m_current_disc_crc);
 }
 
 void MainWindow::onSaveStateMenuAboutToShow()
 {
 	m_ui.menuSaveState->clear();
-	updateSaveStateMenusEnableState(!m_current_game_serial.isEmpty());
-	populateSaveStateMenu(m_ui.menuSaveState, m_current_game_serial, m_current_game_crc);
+	updateSaveStateMenusEnableState(!m_current_disc_serial.isEmpty());
+	populateSaveStateMenu(m_ui.menuSaveState, m_current_disc_serial, m_current_disc_crc);
 }
 
 void MainWindow::onViewToolbarActionToggled(bool checked)
@@ -1269,23 +1270,29 @@ void MainWindow::onViewGamePropertiesActionTriggered()
 		return;
 
 	// prefer to use a game list entry, if we have one, that way the summary is populated
-	if (!m_current_disc_path.isEmpty() || !m_current_elf_override.isEmpty())
+	if (!m_current_disc_path.isEmpty() && m_current_elf_override.isEmpty())
 	{
 		auto lock = GameList::GetLock();
-		const GameList::Entry* entry = m_current_elf_override.isEmpty() ?
-										   GameList::GetEntryForPath(m_current_disc_path.toUtf8().constData()) :
-										   GameList::GetEntryForPath(m_current_elf_override.toUtf8().constData());
+		const GameList::Entry* entry = GameList::GetEntryForPath(m_current_disc_path.toUtf8().constData());
 		if (entry)
 		{
-			SettingsDialog::openGamePropertiesDialog(
-				entry, m_current_elf_override.isEmpty() ? std::string_view(entry->serial) : std::string_view(), entry->crc);
+			SettingsDialog::openGamePropertiesDialog(entry, entry->serial, entry->crc);
 			return;
 		}
 	}
 
 	// open properties for the current running file (isn't in the game list)
-	if (m_current_game_crc != 0)
-		SettingsDialog::openGamePropertiesDialog(nullptr, m_current_game_serial.toStdString(), m_current_game_crc);
+	if (m_current_disc_crc == 0)
+	{
+		QMessageBox::critical(this, tr("Game Properties"), tr("Game properties is unavailable for the current game."));
+		return;
+	}
+
+	// can't use serial for ELFs, because they might have a disc set
+	if (m_current_elf_override.isEmpty())
+		SettingsDialog::openGamePropertiesDialog(nullptr, m_current_disc_serial.toStdString(), m_current_disc_crc);
+	else
+		SettingsDialog::openGamePropertiesDialog(nullptr, std::string_view(), m_current_disc_crc);
 }
 
 void MainWindow::onGitHubRepositoryActionTriggered()
@@ -1386,6 +1393,12 @@ void MainWindow::updateTheme()
 {
 	QtHost::UpdateApplicationTheme();
 	m_game_list_widget->refreshImages();
+}
+
+void MainWindow::updateLanguage()
+{
+	QtHost::InstallTranslator();
+	recreate();
 }
 
 void MainWindow::onInputRecNewActionTriggered()
@@ -1602,13 +1615,15 @@ void MainWindow::onVMStopped()
 		m_game_list_widget->refresh(false);
 }
 
-void MainWindow::onGameChanged(const QString& path, const QString& elf_override, const QString& serial, const QString& name, quint32 crc)
+void MainWindow::onGameChanged(const QString& title, const QString& elf_override, const QString& disc_path,
+	const QString& serial, quint32 disc_crc, quint32 crc)
 {
-	m_current_disc_path = path;
+	m_current_title = title;
 	m_current_elf_override = elf_override;
-	m_current_game_serial = serial;
-	m_current_game_name = name;
-	m_current_game_crc = crc;
+	m_current_disc_path = disc_path;
+	m_current_disc_serial = serial;
+	m_current_disc_crc = disc_crc;
+	m_current_running_crc = crc;
 	updateWindowTitle();
 	updateSaveStateMenusEnableState(!serial.isEmpty());
 }
@@ -1925,7 +1940,7 @@ void MainWindow::relativeMouseModeRequested(bool enabled)
 		return;
 
 	m_relative_mouse_mode = enabled;
-	if (s_vm_valid && !s_vm_paused)
+	if (m_display_widget && !s_vm_paused)
 		updateDisplayWidgetCursor();
 }
 
@@ -1994,6 +2009,7 @@ void MainWindow::destroyDisplayWidget(bool show_game_list)
 
 void MainWindow::updateDisplayWidgetCursor()
 {
+	pxAssertRel(m_display_widget, "Should have a display widget");
 	m_display_widget->updateRelativeMode(s_vm_valid && !s_vm_paused && m_relative_mouse_mode);
 	m_display_widget->updateCursor(s_vm_valid && !s_vm_paused && shouldHideMouseCursor());
 }
@@ -2055,6 +2071,11 @@ SettingsDialog* MainWindow::getSettingsDialog()
 	{
 		m_settings_dialog = new SettingsDialog(this);
 		connect(m_settings_dialog->getInterfaceSettingsWidget(), &InterfaceSettingsWidget::themeChanged, this, &MainWindow::updateTheme);
+		connect(m_settings_dialog->getInterfaceSettingsWidget(), &InterfaceSettingsWidget::languageChanged, this, [this]() {
+			// reopen settings dialog after it applies
+			updateLanguage();
+			g_main_window->doSettings("Interface");
+		});
 	}
 
 	return m_settings_dialog;
@@ -2444,20 +2465,8 @@ void MainWindow::doStartFile(std::optional<CDVD_SourceType> source, const QStrin
 
 void MainWindow::doDiscChange(CDVD_SourceType source, const QString& path)
 {
-	const bool is_gs_dump = VMManager::IsGSDumpFileName(path.toStdString());
-	if (is_gs_dump != GSDumpReplayer::IsReplayingDump())
-	{
-		QMessageBox::critical(this, tr("Error"), tr("Cannot switch from game to GS dump or vice versa."));
-		return;
-	}
-	else if (is_gs_dump)
-	{
-		Host::RunOnCPUThread([path = path.toStdString()]() { GSDumpReplayer::ChangeDump(path.c_str()); });
-		return;
-	}
-
 	bool reset_system = false;
-	if (!m_was_disc_change_request)
+	if (!m_was_disc_change_request && !GSDumpReplayer::IsReplayingDump())
 	{
 		QMessageBox message(QMessageBox::Question, tr("Confirm Disc Change"),
 			tr("Do you want to swap discs or boot the new image (via system reset)?"), QMessageBox::NoButton, this);

@@ -26,6 +26,7 @@
 #include "GS.h"
 #include "GS/GS.h"
 #include "Host.h"
+#include "MTGS.h"
 #include "MTVU.h"
 #include "PAD/Host/PAD.h"
 #include "Patch.h"
@@ -59,7 +60,7 @@ static void PreLoadPrep()
 	// ensure everything is in sync before we start overwriting stuff.
 	if (THREAD_VU1)
 		vu1Thread.WaitVU();
-	GetMTGS().WaitGS(false);
+	MTGS::WaitGS(false);
 
 	// backup current TLBs, since we're going to overwrite them all
 	std::memcpy(s_tlb_backup, tlb, sizeof(s_tlb_backup));
@@ -124,19 +125,19 @@ void SaveStateBase::PrepBlock( int size )
 	}
 }
 
-void SaveStateBase::FreezeTag( const char* src )
+void SaveStateBase::FreezeTag(const char* src)
 {
-	const uint allowedlen = sizeof( m_tagspace )-1;
-	pxAssertDev(strlen(src) < allowedlen, "Tag name exceeds the allowed length");
+	char tagspace[32];
+	pxAssertDev(std::strlen(src) < (sizeof(tagspace) - 1), "Tag name exceeds the allowed length");
 
-	memzero( m_tagspace );
-	strcpy( m_tagspace, src );
-	Freeze( m_tagspace );
+	std::memset(tagspace, 0, sizeof(tagspace));
+	StringUtil::Strlcpy(tagspace, src, sizeof(tagspace));
+	Freeze(tagspace);
 
-	if( strcmp( m_tagspace, src ) != 0 )
+	if (std::strcmp(tagspace, src) != 0)
 	{
 		std::string msg(fmt::format("Savestate data corruption detected while reading tag: {}", src));
-		pxFail( msg.c_str() );
+		pxFail(msg.c_str());
 		throw Exception::SaveStateLoadError().SetDiagMsg(std::move(msg));
 	}
 }
@@ -151,11 +152,11 @@ SaveStateBase& SaveStateBase::FreezeBios()
 
 	u32 bioscheck = BiosChecksum;
 	char biosdesc[256];
-	memzero( biosdesc );
-	memcpy( biosdesc, BiosDescription.c_str(), std::min( sizeof(biosdesc), BiosDescription.length() ) );
+	std::memset(biosdesc, 0, sizeof(biosdesc));
+	StringUtil::Strlcpy(biosdesc, BiosDescription, sizeof(biosdesc));
 
-	Freeze( bioscheck );
-	Freeze( biosdesc );
+	Freeze(bioscheck);
+	Freeze(biosdesc);
 
 	if (bioscheck != BiosChecksum)
 	{
@@ -174,10 +175,10 @@ SaveStateBase& SaveStateBase::FreezeBios()
 
 SaveStateBase& SaveStateBase::FreezeInternals()
 {
-	const u32 previousCRC = ElfCRC;
-
 	// Print this until the MTVU problem in gifPathFreeze is taken care of (rama)
 	if (THREAD_VU1) Console.Warning("MTVU speedhack is enabled, saved states may not be stable");
+
+	vmFreeze();
 
 	// Second Block - Various CPU Registers and States
 	// -----------------------------------------------
@@ -188,30 +189,7 @@ SaveStateBase& SaveStateBase::FreezeInternals()
 	Freeze(tlb);			// tlbs
 	Freeze(AllowParams1);	//OSDConfig written (Fast Boot)
 	Freeze(AllowParams2);
-	Freeze(g_GameStarted);
-	Freeze(g_GameLoading);
-	Freeze(ElfCRC);
-
-	char localDiscSerial[256];
-	StringUtil::Strlcpy(localDiscSerial, DiscSerial.c_str(), sizeof(localDiscSerial));
-	Freeze(localDiscSerial);
-	if (IsLoading())
-	{
-		DiscSerial = localDiscSerial;
-
-		if (ElfCRC != previousCRC)
-		{
-			// HACK: LastELF isn't in the save state... Load it before we go too far into restoring state.
-			// When we next bump save states, we should include it. We need this for achievements, because
-			// we want to load and activate achievements before restoring any of their tracked state.
-			if (const std::string& elf_override = VMManager::Internal::GetElfOverride(); !elf_override.empty())
-				cdvdReloadElfInfo(fmt::format("host:{}", elf_override));
-			else
-				cdvdReloadElfInfo();
-		}
-	}
-
-
+	
 	// Third Block - Cycle Timers and Events
 	// -------------------------------------
 	FreezeTag( "Cycles" );
@@ -345,8 +323,8 @@ struct SysState_Component
 
 static int SysState_MTGSFreeze(FreezeAction mode, freezeData* fP)
 {
-	MTGS_FreezeData sstate = { fP, 0 };
-	GetMTGS().Freeze(mode, sstate);
+	MTGS::FreezeData sstate = { fP, 0 };
+	MTGS::Freeze(mode, sstate);
 	return sstate.retval;
 }
 
@@ -732,7 +710,7 @@ std::unique_ptr<SaveStateScreenshotData> SaveState_SaveScreenshot()
 
 	u32 width, height;
 	std::vector<u32> pixels;
-	if (!GetMTGS().SaveMemorySnapshot(SCREENSHOT_WIDTH, SCREENSHOT_HEIGHT, true, false, &width, &height, &pixels))
+	if (!MTGS::SaveMemorySnapshot(SCREENSHOT_WIDTH, SCREENSHOT_HEIGHT, true, false, &width, &height, &pixels))
 	{
 		// saving failed for some reason, device lost?
 		return nullptr;

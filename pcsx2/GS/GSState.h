@@ -141,15 +141,17 @@ private:
 protected:
 	GSVertex m_v = {};
 	float m_q = 1.0f;
-	GSVector4i m_scissor = {};
-	GSVector4i m_ofxy = {};
+	GSVector4i m_scissor_cull_min = {};
+	GSVector4i m_scissor_cull_max = {};
+	GSVector4i m_xyof = {};
 
 	struct
 	{
 		GSVertex* buff;
 		u32 head, tail, next, maxcount; // head: first vertex, tail: last vertex + 1, next: last indexed + 1
 		u32 xy_tail;
-		u64 xy[4];
+		GSVector4i xy[4];
+		GSVector4i xyhead;
 	} m_vertex = {};
 
 	struct
@@ -233,8 +235,10 @@ public:
 	u32 m_dirty_gs_regs = 0;
 	int m_backed_up_ctx = 0;
 	std::vector<GSUploadQueue> m_draw_transfers;
+	std::vector<GSUploadQueue> m_draw_transfers_double_buff;
 
 	static int s_n;
+	static int s_last_transfer_draw_n;
 	static int s_transfer_n;
 
 	static constexpr u32 STATE_VERSION = 8;
@@ -312,8 +316,8 @@ public:
 		};
 
 		static inline constexpr GSVector4i VideoModeOffsetsOverscan[6] = {
-			GSVector4i::cxpr(711, 243, 498, 12),
-			GSVector4i::cxpr(702, 288, 532, 18),
+			GSVector4i::cxpr(711, 240, 498, 17),
+			GSVector4i::cxpr(711, 288, 532, 21),
 			GSVector4i::cxpr(640, 480, 276, 34),
 			GSVector4i::cxpr(720, 480, 232, 35),
 			GSVector4i::cxpr(1280, 720, 302, 24),
@@ -914,7 +918,7 @@ public:
 	virtual void PurgePool();
 	virtual void PurgeTextureCache();
 	virtual void ReadbackTextureCache();
-	virtual void InvalidateVideoMem(const GIFRegBITBLTBUF& BITBLTBUF, const GSVector4i& r, bool eewrite = false) {}
+	virtual void InvalidateVideoMem(const GIFRegBITBLTBUF& BITBLTBUF, const GSVector4i& r) {}
 	virtual void InvalidateLocalMem(const GIFRegBITBLTBUF& BITBLTBUF, const GSVector4i& r, bool clut = false) {}
 
 	virtual void Move();

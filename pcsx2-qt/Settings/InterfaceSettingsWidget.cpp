@@ -22,7 +22,7 @@
 #include "SettingsDialog.h"
 #include "QtHost.h"
 
-static const char* THEME_NAMES[] = {
+const char* InterfaceSettingsWidget::THEME_NAMES[] = {
 	QT_TRANSLATE_NOOP("InterfaceSettingsWidget", "Native"),
 	//: Ignore what Crowdin says in this string about "[Light]/[Dark]" being untouchable here, these are not variables in this case and must be translated.
 	QT_TRANSLATE_NOOP("InterfaceSettingsWidget", "Fusion [Light/Dark]"),
@@ -52,7 +52,7 @@ static const char* THEME_NAMES[] = {
 	QT_TRANSLATE_NOOP("InterfaceSettingsWidget", "Custom.qss [Drop in PCSX2 Folder]"),
 	nullptr};
 
-static const char* THEME_VALUES[] = {
+const char* InterfaceSettingsWidget::THEME_VALUES[] = {
 	"",
 	"fusion",
 	"darkfusion",
@@ -94,6 +94,10 @@ InterfaceSettingsWidget::InterfaceSettingsWidget(SettingsDialog* dialog, QWidget
 	SettingWidgetBinder::BindWidgetToEnumSetting(sif, m_ui.theme, "UI", "Theme", THEME_NAMES, THEME_VALUES,
 		QtHost::GetDefaultThemeName());
 	connect(m_ui.theme, QOverload<int>::of(&QComboBox::currentIndexChanged), [this]() { emit themeChanged(); });
+
+	populateLanguages();
+	SettingWidgetBinder::BindWidgetToStringSetting(sif, m_ui.language, "UI", "Language", QtHost::GetDefaultLanguage());
+	connect(m_ui.language, QOverload<int>::of(&QComboBox::currentIndexChanged), [this]() { emit languageChanged(); });
 
 	// Per-game settings is special, we don't want to bind it if we're editing per-game settings.
 	m_ui.perGameSettings->setEnabled(!dialog->isPerGameSettings());
@@ -181,9 +185,6 @@ InterfaceSettingsWidget::InterfaceSettingsWidget(SettingsDialog* dialog, QWidget
 		m_ui.disableWindowResizing, tr("Disable Window Resizing"), tr("Unchecked"), 
 		tr("Prevents the main window from being resized."));
 
-	// Not yet used, disable the options
-	m_ui.language->setDisabled(true);
-
 	onRenderToSeparateWindowChanged();
 }
 
@@ -192,4 +193,10 @@ InterfaceSettingsWidget::~InterfaceSettingsWidget() = default;
 void InterfaceSettingsWidget::onRenderToSeparateWindowChanged()
 {
 	m_ui.hideMainWindow->setEnabled(m_ui.renderToSeparateWindow->isChecked());
+}
+
+void InterfaceSettingsWidget::populateLanguages()
+{
+	for (const std::pair<QString, QString>& it : QtHost::GetAvailableLanguageList())
+		m_ui.language->addItem(it.first, it.second);
 }

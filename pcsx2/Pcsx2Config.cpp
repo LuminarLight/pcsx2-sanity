@@ -88,6 +88,55 @@ float SettingInfo::FloatStepValue() const
 	return step_value ? StringUtil::FromChars<float>(step_value).value_or(fallback_value) : fallback_value;
 }
 
+void SettingInfo::SetDefaultValue(SettingsInterface* si, const char* section, const char* key) const
+{
+	switch (type)
+	{
+		case SettingInfo::Type::Boolean:
+			si->SetBoolValue(section, key, BooleanDefaultValue());
+			break;
+		case SettingInfo::Type::Integer:
+		case SettingInfo::Type::IntegerList:
+			si->SetIntValue(section, key, IntegerDefaultValue());
+			break;
+		case SettingInfo::Type::Float:
+			si->SetFloatValue(section, key, FloatDefaultValue());
+			break;
+		case SettingInfo::Type::String:
+		case SettingInfo::Type::StringList:
+		case SettingInfo::Type::Path:
+			si->SetStringValue(section, key, StringDefaultValue());
+			break;
+		default:
+			break;
+	}
+}
+
+void SettingInfo::CopyValue(SettingsInterface* dest_si, const SettingsInterface& src_si,
+	const char* section, const char* key) const
+{
+	switch (type)
+	{
+		case SettingInfo::Type::Boolean:
+			dest_si->CopyBoolValue(src_si, section, key);
+			break;
+		case SettingInfo::Type::Integer:
+		case SettingInfo::Type::IntegerList:
+			dest_si->CopyIntValue(src_si, section, key);
+			break;
+		case SettingInfo::Type::Float:
+			dest_si->CopyFloatValue(src_si, section, key);
+			break;
+		case SettingInfo::Type::String:
+		case SettingInfo::Type::StringList:
+		case SettingInfo::Type::Path:
+			dest_si->CopyStringValue(src_si, section, key);
+			break;
+		default:
+			break;
+	}
+}
+
 namespace EmuFolders
 {
 	std::string AppRoot;
@@ -826,7 +875,7 @@ void Pcsx2Config::GSOptions::MaskUserHacks()
 
 void Pcsx2Config::GSOptions::MaskUpscalingHacks()
 {
-	if (UpscaleMultiplier > 1.0f && ManualUserHacks)
+	if (UpscaleMultiplier > 1.0f)
 		return;
 
 	UserHacks_AlignSpriteX = false;
@@ -1306,6 +1355,8 @@ Pcsx2Config::Pcsx2Config()
 	McdEnableEjection = true;
 	McdFolderAutoManage = true;
 	EnablePatches = true;
+	EnableFastBoot = true;
+	EnablePerGameSettings = true;
 	EnableRecordingTools = true;
 	EnableGameFixes = true;
 	InhibitScreensaver = true;
@@ -1350,6 +1401,9 @@ void Pcsx2Config::LoadSave(SettingsWrapper& wrap)
 	SettingsWrapBitBool(EnableWideScreenPatches);
 	SettingsWrapBitBool(EnableNoInterlacingPatches);
 	SettingsWrapBitBool(EnableToolMode);
+	SettingsWrapBitBool(EnableFastBoot);
+	SettingsWrapBitBool(EnableFastBootFastForward);
+	SettingsWrapBitBool(EnablePerGameSettings);
 	SettingsWrapBitBool(EnableRecordingTools);
 	SettingsWrapBitBool(EnableGameFixes);
 	SettingsWrapBitBool(SaveStateOnShutdown);
@@ -1474,7 +1528,6 @@ bool Pcsx2Config::operator==(const Pcsx2Config& right) const
 void Pcsx2Config::CopyRuntimeConfig(Pcsx2Config& cfg)
 {
 	GS.LimitScalar = cfg.GS.LimitScalar;
-	UseBOOT2Injection = cfg.UseBOOT2Injection;
 	CurrentBlockdump = std::move(cfg.CurrentBlockdump);
 	CurrentIRX = std::move(cfg.CurrentIRX);
 	CurrentGameArgs = std::move(cfg.CurrentGameArgs);

@@ -26,6 +26,7 @@
 #include <iomanip> // Dump Verticles
 
 int GSState::s_n = 0;
+int GSState::s_last_transfer_draw_n = 0;
 int GSState::s_transfer_n = 0;
 
 static __fi bool IsAutoFlushEnabled()
@@ -112,6 +113,7 @@ GSState::GSState()
 	GrowVertexBuffer();
 
 	m_draw_transfers.clear();
+	m_draw_transfers_double_buff.clear();
 
 	PRIM = &m_env.PRIM;
 	//CSR->rREV = 0x20;
@@ -174,7 +176,7 @@ void GSState::Reset(bool hardware_reset)
 		// after reset (otherwise it'd only ever render 1x1).
 		//
 		if (!hardware_reset && GSConfig.UseHardwareRenderer())
-			m_env.CTXT[i].scissor.ex = GSVector4i::xffffffff();
+			m_env.CTXT[i].scissor.cull = GSVector4i::xffffffff();
 
 		m_env.CTXT[i].offset.fb = m_mem.GetOffset(m_env.CTXT[i].FRAME.Block(), m_env.CTXT[i].FRAME.FBW, m_env.CTXT[i].FRAME.PSM);
 		m_env.CTXT[i].offset.zb = m_mem.GetOffset(m_env.CTXT[i].ZBUF.Block(), m_env.CTXT[i].FRAME.FBW, m_env.CTXT[i].ZBUF.PSM);
@@ -1496,7 +1498,7 @@ void GSState::FlushWrite()
 	r.right = r.left + m_env.TRXREG.RRW;
 	r.bottom = r.top + m_env.TRXREG.RRH;
 
-	InvalidateVideoMem(m_env.BITBLTBUF, r, true);
+	InvalidateVideoMem(m_env.BITBLTBUF, r);
 
 	const GSLocalMemory::writeImage wi = GSLocalMemory::m_psm[m_env.BITBLTBUF.DPSM].wi;
 
@@ -1646,7 +1648,11 @@ void GSState::FlushPrim()
 
 		try
 		{
-			Draw();
+			// Skip draw if Z test is enabled, but set to fail all pixels.
+			const bool skip_draw = (m_context->TEST.ZTE && m_context->TEST.ZTST == ZTST_NEVER);
+
+			if (!skip_draw)
+				Draw();
 		}
 		catch (GSRecoverableError&)
 		{
@@ -1680,8 +1686,9 @@ void GSState::FlushPrim()
 				{
 					GSVector4i* RESTRICT vert_ptr = (GSVector4i*)&m_vertex.buff[i];
 					GSVector4i v = vert_ptr[1];
-					v = v.xxxx().u16to32().sub32(m_ofxy);
-					GSVector4i::storel(&m_vertex.xy[i & 3], v.blend16<0xf0>(v.sra32(4)).ps32());
+					v = v.xxxx().u16to32().sub32(m_xyof);
+					v = v.blend32<12>(v.sra32(4));
+					m_vertex.xy[i & 3] = v;
 					m_vertex.xy_tail = unused;
 				}
 			}
@@ -1775,6 +1782,7 @@ void GSState::Write(const u8* mem, int len)
 		r.right = r.left + m_env.TRXREG.RRW;
 		r.bottom = r.top + m_env.TRXREG.RRH;
 
+		s_last_transfer_draw_n = s_n;
 		// Store the transfer for preloading new RT's.
 		if ((m_draw_transfers.size() > 0 && blit.DBP == m_draw_transfers.back().blit.DBP))
 		{
@@ -1791,14 +1799,14 @@ void GSState::Write(const u8* mem, int len)
 		}
 
 		GL_CACHE("Write! %u ...  => 0x%x W:%d F:%s (DIR %d%d), dPos(%d %d) size(%d %d)", s_transfer_n,
-			blit.DBP, blit.DBW, psm_str(blit.DPSM),
-			m_env.TRXPOS.DIRX, m_env.TRXPOS.DIRY,
-			m_env.TRXPOS.DSAX, m_env.TRXPOS.DSAY, w, h);
+				blit.DBP, blit.DBW, psm_str(blit.DPSM),
+				m_env.TRXPOS.DIRX, m_env.TRXPOS.DIRY,
+				m_env.TRXPOS.DSAX, m_env.TRXPOS.DSAY, w, h);
 
 		if (len >= m_tr.total)
 		{
 			// received all data in one piece, no need to buffer it
-			InvalidateVideoMem(blit, r, true);
+			InvalidateVideoMem(blit, r);
 
 			psm.wi(m_mem, m_tr.x, m_tr.y, mem, m_tr.total, blit, m_env.TRXPOS, m_env.TRXREG);
 
@@ -1905,7 +1913,7 @@ void GSState::Move()
 			 sx, sy, dx, dy, w, h);
 
 	InvalidateLocalMem(m_env.BITBLTBUF, GSVector4i(sx, sy, sx + w, sy + h));
-	InvalidateVideoMem(m_env.BITBLTBUF, GSVector4i(dx, dy, dx + w, dy + h), true);
+	InvalidateVideoMem(m_env.BITBLTBUF, GSVector4i(dx, dy, dx + w, dy + h));
 
 	int xinc = 1;
 	int yinc = 1;
@@ -1977,6 +1985,8 @@ void GSState::Move()
 	r.top = m_env.TRXPOS.DSAY;
 	r.right = r.left + m_env.TRXREG.RRW;
 	r.bottom = r.top + m_env.TRXREG.RRH;
+
+	s_last_transfer_draw_n = s_n;
 	// Store the transfer for preloading new RT's.
 	if ((m_draw_transfers.size() > 0 && m_env.BITBLTBUF.DBP == m_draw_transfers.back().blit.DBP))
 	{
@@ -2660,8 +2670,9 @@ void GSState::UpdateContext()
 
 void GSState::UpdateScissor()
 {
-	m_scissor = m_context->scissor.ex;
-	m_ofxy = m_context->scissor.ofxy;
+	m_scissor_cull_min = m_context->scissor.cull.xyxy();
+	m_scissor_cull_max = m_context->scissor.cull.zwzw();
+	m_xyof = m_context->scissor.xyof;
 	m_scissor_invalid = !m_context->scissor.in.gt32(m_context->scissor.in.zwzw()).allfalse();
 }
 
@@ -3161,9 +3172,18 @@ __forceinline void GSState::VertexKick(u32 skip)
 	tailptr[0] = new_v0;
 	tailptr[1] = new_v1;
 
-	const GSVector4i xy = new_v1.xxxx().u16to32().sub32(m_ofxy);
+	// We maintain the X/Y coordinates for the last 4 vertices, as well as the head for triangle fans, so we can compute
+	// the min/max, and cull degenerate triangles, which saves draws in some cases. Why 4? Mod 4 is cheaper than Mod 3.
+	// These vertices are a full vector containing <X_Fixed_Point, Y_Fixed_Point, X_Integer, Y_Integer>. We use the
+	// integer coordinates for culling at native resolution, and the fixed point for all others. The XY offset has to be
+	// applied, then we split it into the fixed/integer portions.
+	const GSVector4i xy_ofs = new_v1.xxxx().u16to32().sub32(m_xyof);
+	const GSVector4i xy = xy_ofs.blend32<12>(xy_ofs.sra32(4));
+	m_vertex.xy[xy_tail & 3] = xy;
 
-	GSVector4i::storel(&m_vertex.xy[xy_tail & 3], xy.blend16<0xf0>(xy.sra32(4)).ps32());
+	// Backup head for triangle fans so we can read it later, otherwise it'll get lost after the 4th vertex.
+	if (prim == GS_TRIANGLEFAN && tail == head)
+		m_vertex.xyhead = xy;
 
 	m_vertex.tail = ++tail;
 	m_vertex.xy_tail = ++xy_tail;
@@ -3173,44 +3193,40 @@ __forceinline void GSState::VertexKick(u32 skip)
 	if (m < n)
 		return;
 
+
 	// Skip draws when scissor is out of range (i.e. bottom-right is less than top-left), since everything will get clipped.
 	skip |= static_cast<u32>(m_scissor_invalid);
 
-	if (skip == 0 && (prim != GS_TRIANGLEFAN || m <= 4)) // m_vertex.xy only knows about the last 4 vertices, head could be far behind for fan
+	GSVector4i pmin, pmax;
+	if (skip == 0)
 	{
-		GSVector4i pmin, pmax;
-
-		const GSVector4i v0 = GSVector4i::loadl(&m_vertex.xy[(xy_tail + 1) & 3]); // T-3
-		const GSVector4i v1 = GSVector4i::loadl(&m_vertex.xy[(xy_tail + 2) & 3]); // T-2
-		const GSVector4i v2 = GSVector4i::loadl(&m_vertex.xy[(xy_tail + 3) & 3]); // T-1
-		const GSVector4i v3 = GSVector4i::loadl(&m_vertex.xy[(xy_tail - m) & 3]); // H
+		const GSVector4i v0 = m_vertex.xy[(xy_tail - 1) & 3];
+		const GSVector4i v1 = m_vertex.xy[(xy_tail - 2) & 3];
+		const GSVector4i v2 = (prim == GS_TRIANGLEFAN) ? m_vertex.xyhead : m_vertex.xy[(xy_tail - 3) & 3];
 
 		switch (prim)
 		{
 			case GS_POINTLIST:
-				pmin = v2;
-				pmax = v2;
+				pmin = v0;
+				pmax = v0;
 				break;
 			case GS_LINELIST:
 			case GS_LINESTRIP:
 			case GS_SPRITE:
-				pmin = v2.min_i16(v1);
-				pmax = v2.max_i16(v1);
+				pmin = v0.min_i32(v1);
+				pmax = v0.max_i32(v1);
 				break;
 			case GS_TRIANGLELIST:
 			case GS_TRIANGLESTRIP:
-				pmin = v2.min_i16(v1.min_i16(v0));
-				pmax = v2.max_i16(v1.max_i16(v0));
-				break;
 			case GS_TRIANGLEFAN:
-				pmin = v2.min_i16(v1.min_i16(v3));
-				pmax = v2.max_i16(v1.max_i16(v3));
+				pmin = v0.min_i32(v1.min_i32(v2));
+				pmax = v0.max_i32(v1.max_i32(v2));
 				break;
 			default:
 				break;
 		}
 
-		GSVector4i test = pmax.lt16(m_scissor) | pmin.gt16(m_scissor.zwzwl());
+		GSVector4i test = pmax.lt32(m_scissor_cull_min) | pmin.gt32(m_scissor_cull_max);
 
 		switch (prim)
 		{
@@ -3218,10 +3234,14 @@ __forceinline void GSState::VertexKick(u32 skip)
 			case GS_TRIANGLESTRIP:
 			case GS_TRIANGLEFAN:
 			case GS_SPRITE:
-				// Discard degenerate triangles. For native resolution, we can ignore the subpixel bits,
-				// because at the boundaries, they're irrelevant.
-				test |= m_nativeres ? pmin.eq16(pmax).zwzwl() : pmin.eq16(pmax);
-				break;
+			{
+				// Discard degenerate triangles which don't cover at least one pixel. Since the vertices are in native
+				// resolution space, we can use the integer locations. When upscaling, we can't, because a primitive which
+				// does not span a single pixel at 1x may span multiple pixels at higher resolutions.
+				const GSVector4i degen_test = pmin.eq32(pmax);
+				test |= m_nativeres ? degen_test.zwzw() : degen_test;
+			}
+			break;
 			default:
 				break;
 		}
@@ -3230,18 +3250,15 @@ __forceinline void GSState::VertexKick(u32 skip)
 		{
 			case GS_TRIANGLELIST:
 			case GS_TRIANGLESTRIP:
-				// TODO: any way to do a 16-bit integer cross product?
-				// cross product is zero most of the time because either of the vertices are the same
-				test = (test | v0 == v1) | (v1 == v2 | v0 == v2);
-				break;
 			case GS_TRIANGLEFAN:
-				test = (test | v3 == v1) | (v1 == v2 | v3 == v2);
+				test = (test | v0.eq64(v1)) | (v1.eq64(v2) | v0.eq64(v2));
 				break;
 			default:
 				break;
 		}
 
-		skip |= test.mask() & 15;
+		// We only care about the xy passing the skip test. zw is the offset coordinates for native culling.
+		skip |= test.mask() & 0xff;
 	}
 
 	if (skip != 0)
@@ -3361,46 +3378,14 @@ __forceinline void GSState::VertexKick(u32 skip)
 			__assume(0);
 	}
 
-	{
-		const GSVector4i voffset(GSVector4i::loadl(&m_context->XYOFFSET));
-
-		auto get_vertex = [&](u32 i) {
-			GSVector4i v(GSVector4i::loadl(&m_vertex.buff[m_index.buff[(m_index.tail - n) + (i)]].XYZ));
-			v = v.upl16(); // 16->32
-			v = v.sub32(voffset); // -= (OFX, OFY)
-			v = v.sra32(4); // >> 4
-			return v;
-		};
-
-		const GSVector4i xy0(get_vertex(0));
-		GSVector4i min, max;
-		if (m_vertex.tail == n)
-		{
-			min = xy0;
-			max = xy0;
-		}
-		else
-		{
-			min = temp_draw_rect.min_i32(xy0);
-			max = temp_draw_rect.zwzw().max_i32(xy0);
-		}
-
-		if constexpr (n > 1)
-		{
-			const GSVector4i xy1(get_vertex(1));
-			min = min.min_i32(xy1);
-			max = max.max_i32(xy1);
-
-			if constexpr (n > 2)
-			{
-				const GSVector4i xy2(get_vertex(2));
-				min = min.min_i32(xy2);
-				max = max.max_i32(xy2);
-			}
-		}
-
-		temp_draw_rect = min.upl64(max).rintersect(m_context->scissor.in);
-	}
+	// Update rectangle for the current draw. We can use the re-integer coordinates from min/max here.
+	const GSVector4i draw_min = pmin.zwzw();
+	const GSVector4i draw_max = pmax;
+	if (m_vertex.tail != n)
+		temp_draw_rect = temp_draw_rect.min_i32(draw_min).blend32<12>(temp_draw_rect.max_i32(draw_max));
+	else
+		temp_draw_rect = draw_min.blend32<12>(draw_max);
+	temp_draw_rect = temp_draw_rect.rintersect(m_context->scissor.in);
 
 	CLUTAutoFlush(prim);
 
