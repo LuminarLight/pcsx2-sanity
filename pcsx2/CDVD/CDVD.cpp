@@ -454,6 +454,54 @@ static CDVDDiscType GetPS2ElfName(std::string* name, std::string* version)
 
 	try {
 		IsoFSCDVD isofs;
+		IsoFile file(isofs, "DRIVERS\\FIREWIRE.IRX;1");
+
+		int size = file.getLength();
+		if (size == 0)
+			goto diskinfo;
+
+		Console.Warning("(FIREWIRE.IRX) Found it, using this.");
+		*name = "cdrom0:\\DRIVERS\\FIREWIRE.IRX;1";
+		return CDVDDiscType::PS2Disc;
+	}
+	catch (Exception::FileNotFound& ex)
+	{
+		Console.Warning("(FIREWIRE.IRX) FileNotFound:" + ex.FormatDiagnosticMessage());
+		goto diskinfo;
+	}
+	catch (Exception::BadStream& ex)
+	{
+		Console.Warning("(FIREWIRE.IRX) BadStream:" + ex.FormatDiagnosticMessage());
+		goto diskinfo;
+	}
+
+	diskinfo:
+	try {
+		IsoFSCDVD isofs;
+		IsoFile file(isofs, "DISKINFO.BIN;1");
+
+		int size = file.getLength();
+		if (size == 0)
+			goto systemcnf;
+
+		Console.Warning("(DISKINFO.BIN) Found it, using this.");
+		*name = "cdrom0:\\DISKINFO.BIN;1";
+		return CDVDDiscType::PS2Disc;			
+	}
+	catch (Exception::FileNotFound& ex)
+	{
+		Console.Warning("(DISKINFO.BIN) FileNotFound:" + ex.FormatDiagnosticMessage());
+		goto systemcnf;
+	}
+	catch (Exception::BadStream& ex)
+	{
+		Console.Warning("(DISKINFO.BIN) BadStream:" + ex.FormatDiagnosticMessage());
+		goto systemcnf;
+	}
+
+	systemcnf: 
+	try {
+		IsoFSCDVD isofs;
 		IsoFile file( isofs, "SYSTEM.CNF;1");
 
 		int size = file.getLength();
@@ -550,6 +598,7 @@ static std::string ExecutablePathToSerial(const std::string& path)
 		!StringUtil::WildcardMatch(serial.c_str(), "????""-???.??*")) // double quote because trigraphs
 	{
 		serial.clear();
+		serial = "X";
 	}
 
 	// SCES_123.45 -> SCES-12345

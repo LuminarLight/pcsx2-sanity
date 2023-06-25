@@ -213,7 +213,7 @@ bool GameList::GetElfListEntry(const std::string& path, GameList::Entry* entry)
 		if (GetIsoSerialAndCRC(disc_path, &disc_type, &entry->serial, &disc_crc))
 		{
 			// use serial/region/compat info from the db
-			if (const GameDatabaseSchema::GameEntry* db_entry = GameDatabase::findGame(entry->serial))
+			if (const GameDatabaseSchema::GameEntry* db_entry = GameDatabase::findGame(entry->serial, fmt::format("{:08X}", entry->crc)))
 			{
 				entry->compatibility_rating = db_entry->compat;
 				entry->region = ParseDatabaseRegion(db_entry->region);
@@ -324,7 +324,7 @@ bool GameList::GetIsoListEntry(const std::string& path, GameList::Entry* entry)
 	entry->total_size = sd.Size;
 	entry->compatibility_rating = CompatibilityRating::Unknown;
 
-	if (const GameDatabaseSchema::GameEntry* db_entry = GameDatabase::findGame(entry->serial))
+	if (const GameDatabaseSchema::GameEntry* db_entry = GameDatabase::findGame(entry->serial, fmt::format("{:08X}", entry->crc)))
 	{
 		entry->title = std::move(db_entry->name);
 		entry->compatibility_rating = db_entry->compat;

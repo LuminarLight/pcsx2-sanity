@@ -555,7 +555,7 @@ void Patch::ReloadPatches(const std::string& serial, u32 crc, bool reload_files,
 	{
 		s_gamedb_patches.clear();
 
-		const GameDatabaseSchema::GameEntry* game = GameDatabase::findGame(serial);
+		const GameDatabaseSchema::GameEntry* game = GameDatabase::findGame(serial, fmt::format("{:08X}", crc));
 		if (game)
 		{
 			const std::string* patches = game->findPatch(crc);
@@ -587,7 +587,7 @@ void Patch::ReloadPatches(const std::string& serial, u32 crc, bool reload_files,
 
 		s_tool_patches.clear();
 		EnumeratePnachFiles(
-			s_patches_serial, s_patches_crc, true, [](const std::string& filename, const std::string& pnach_data) {
+			serial, s_patches_crc, true, false, [](const std::string& filename, const std::string& pnach_data) {
 				const u32 patch_count = LoadPatchesFromString(&s_tool_patches, pnach_data);
 				if (patch_count > 0)
 					Console.WriteLn(Color_Green, fmt::format("Found {} tool patches in {}.", patch_count, filename));

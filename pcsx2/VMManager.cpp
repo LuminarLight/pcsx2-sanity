@@ -503,7 +503,7 @@ void VMManager::ApplyGameFixes()
 		return;
 	}
 
-	const GameDatabaseSchema::GameEntry* game = GameDatabase::findGame(s_disc_serial);
+	const GameDatabaseSchema::GameEntry* game = GameDatabase::findGame(s_disc_serial, fmt::format("{:08X}", s_disc_crc));
 	if (!game)
 		return;
 
@@ -837,7 +837,7 @@ void VMManager::UpdateDiscDetails(bool booting)
 
 		if (serial_is_valid)
 		{
-			if (const GameDatabaseSchema::GameEntry* game = GameDatabase::findGame(s_disc_serial))
+			if (const GameDatabaseSchema::GameEntry* game = GameDatabase::findGame(s_disc_serial, fmt::format("{:08X}", s_disc_crc)))
 			{
 				// Append the ELF override if we're using it with a disc.
 				if (!s_elf_override.empty())
@@ -1956,6 +1956,8 @@ void VMManager::Internal::EntryPointCompilingOnCPUThread()
 		PerformanceMetrics::Reset();
 	}
 
+	vtlb_VMap(0x02000000, 0x02000000, 0x06000000);
+
 	HandleELFChange(true);
 
 	Patch::ApplyLoadedPatches(Patch::PPT_ONCE_ON_LOAD);
@@ -2137,7 +2139,7 @@ void VMManager::CheckForMemoryCardConfigChanges(const Pcsx2Config& old_config)
 	std::string sioSerial;
 	{
 		std::unique_lock lock(s_info_mutex);
-		if (const GameDatabaseSchema::GameEntry* game = GameDatabase::findGame(s_disc_serial))
+		if (const GameDatabaseSchema::GameEntry* game = GameDatabase::findGame(s_disc_serial, fmt::format("{:08X}", s_disc_crc)))
 			sioSerial = game->memcardFiltersAsString();
 		if (sioSerial.empty())
 			sioSerial = s_disc_serial;

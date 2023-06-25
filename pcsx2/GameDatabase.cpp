@@ -965,10 +965,19 @@ void GameDatabase::ensureLoaded()
 	});
 }
 
-const GameDatabaseSchema::GameEntry* GameDatabase::findGame(const std::string_view& serial)
+const GameDatabaseSchema::GameEntry* GameDatabase::findGame(const std::string_view& serial, const std::string_view& crc)
 {
 	GameDatabase::ensureLoaded();
 
-	auto iter = s_game_db.find(StringUtil::toLower(serial));
-	return (iter != s_game_db.end()) ? &iter->second : nullptr;
+	if (serial == "X")
+	{
+		Console.WriteLn(Color_Magenta, fmt::format("SERIAL IS X, crc is {}.", crc));
+		auto iter = s_game_db.find(StringUtil::toLower(crc));
+		return (iter != s_game_db.end()) ? &iter->second : nullptr;
+	}
+	else
+	{
+		auto iter = s_game_db.find(StringUtil::toLower(serial));
+		return (iter != s_game_db.end()) ? &iter->second : nullptr;
+	}
 }
