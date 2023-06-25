@@ -171,25 +171,21 @@ namespace Patch
 	// Name of patches which will be auto-enabled based on global options.
 	static constexpr std::string_view WS_PATCH_NAME = "Widescreen 16:9";
 	static constexpr std::string_view NI_PATCH_NAME = "No-Interlacing";
-	static constexpr std::string_view TOOL_PATCH_NAME = "TOOL";
 	static constexpr std::string_view PATCHES_ZIP_NAME = "patches.zip";
 
 	const char* PATCHES_CONFIG_SECTION = "Patches";
 	const char* CHEATS_CONFIG_SECTION = "Cheats";
-	const char* TOOL_PATCHES_CONFIG_SECTION = "ToolPatches";
 	const char* PATCH_ENABLE_CONFIG_KEY = "Enable";
 
 	static zip_t* s_patches_zip;
 	static PatchList s_gamedb_patches;
 	static PatchList s_game_patches;
 	static PatchList s_cheat_patches;
-	static PatchList s_tool_patches;
 
 	static ActivePatchList s_active_patches;
 	static std::vector<DynamicPatch> s_active_dynamic_patches;
 	static EnablePatchList s_enabled_cheats;
 	static EnablePatchList s_enabled_patches;
-	static EnablePatchList s_enabled_tool_patches;
 	static u32 s_patches_crc;
 	static std::optional<AspectRatioType> s_override_aspect_ratio;
 	static std::optional<GSInterlaceMode> s_override_interlace_mode;
@@ -346,17 +342,6 @@ std::vector<std::string> Patch::FindPatchFilesOnDisk(const std::string_view& ser
 	for (FILESYSTEM_FIND_DATA& fd : files)
 		ret.push_back(std::move(fd.FileName));
 
-	// TOOL Patches
-	if (!cheats)
-	{
-		FileSystem::FindFiles(EmuFolders::ToolPatches.c_str(),
-			GetPnachTemplate(serial, crc, false, true).c_str(), FILESYSTEM_FIND_FILES | FILESYSTEM_FIND_HIDDEN_FILES,
-			&files);
-		ret.reserve(ret.size() + files.size());
-		for (FILESYSTEM_FIND_DATA& fd : files)
-			ret.push_back(std::move(fd.FileName));
-	}	
-
 	return ret;
 }
 
@@ -408,7 +393,6 @@ void Patch::ExtractPatchInfo(PatchInfoList* dst, const std::string& pnach_data, 
 			continue;
 
 		const bool has_patch = !current_patch.name.empty();
-
 
 		if (line.length() > 2 && line.front() == '[' && line.back() == ']')
 		{
@@ -477,7 +461,7 @@ Patch::PatchInfoList Patch::GetPatchInfo(const std::string_view& serial, u32 crc
 
 void Patch::ReloadEnabledLists()
 {
-	if (EmuConfig.EnableCheats && !Achievements::ChallengeModeActive() && !EmuConfig.EnableToolMode)
+	if (EmuConfig.EnableCheats && !Achievements::ChallengeModeActive())
 		s_enabled_cheats = Host::GetStringListSetting(CHEATS_CONFIG_SECTION, PATCH_ENABLE_CONFIG_KEY);
 	else
 		s_enabled_cheats = {};
@@ -485,7 +469,7 @@ void Patch::ReloadEnabledLists()
 	s_enabled_patches = Host::GetStringListSetting(PATCHES_CONFIG_SECTION, PATCH_ENABLE_CONFIG_KEY);
 
 	// Name based matching for widescreen/NI settings.
-	if (EmuConfig.EnableWideScreenPatches && !EmuConfig.EnableToolMode)
+	if (EmuConfig.EnableWideScreenPatches)
 	{
 		if (std::none_of(s_enabled_patches.begin(), s_enabled_patches.end(),
 				[](const std::string& it) { return (it == WS_PATCH_NAME); }))
@@ -493,29 +477,13 @@ void Patch::ReloadEnabledLists()
 			s_enabled_patches.emplace_back(WS_PATCH_NAME);
 		}
 	}
-	if (EmuConfig.EnableNoInterlacingPatches && !EmuConfig.EnableToolMode)
+	if (EmuConfig.EnableNoInterlacingPatches)
 	{
 		if (std::none_of(s_enabled_patches.begin(), s_enabled_patches.end(),
 				[](const std::string& it) { return (it == NI_PATCH_NAME); }))
 		{
 			s_enabled_patches.emplace_back(NI_PATCH_NAME);
 		}
-	}
-
-	// TOOL Patches
-	if (EmuConfig.EnableToolMode)
-	{
-		s_enabled_tool_patches = Host::GetStringListSetting(TOOL_PATCHES_CONFIG_SECTION, PATCH_ENABLE_CONFIG_KEY);
-
-		if (std::none_of(s_enabled_tool_patches.begin(), s_enabled_tool_patches.end(),
-				[](const std::string& it) { return (it == TOOL_PATCH_NAME); }))
-		{
-			s_enabled_tool_patches.emplace_back(TOOL_PATCH_NAME);
-		}
-	}
-	else
-	{
-		s_enabled_tool_patches = {};
 	}
 }
 
@@ -535,9 +503,8 @@ u32 Patch::EnablePatches(const PatchList& patches, const EnablePatchList& enable
 		for (const PatchCommand& ip : p.patches)
 		{
 			// print the actual patch lines only in verbose mode (even in devel)
-			if (true)
-				Console.WriteLn(Color_Magenta, fmt::format("Enabled patch: {}", ip.ToString()));
-				//DevCon.Indent().WriteLn(ip.ToString());
+			if (DevConWriterEnabled)
+				DevCon.Indent().WriteLn(ip.ToString());
 
 			s_active_patches.push_back(&ip);
 		}
@@ -592,14 +559,6 @@ void Patch::ReloadPatches(const std::string& serial, u32 crc, bool reload_files,
 				if (patch_count > 0)
 					Console.WriteLn(Color_Green, fmt::format("Found {} cheats in {}.", patch_count, filename));
 			});
-
-		s_tool_patches.clear();
-		EnumeratePnachFiles(
-			serial, s_patches_crc, true, false, [](const std::string& filename, const std::string& pnach_data) {
-				const u32 patch_count = LoadPatchesFromString(&s_tool_patches, pnach_data);
-				if (patch_count > 0)
-					Console.WriteLn(Color_Green, fmt::format("Found {} tool patches in {}.", patch_count, filename));
-			});
 	}
 
 	UpdateActivePatches(reload_enabled_list, verbose, verbose_if_changed);
@@ -638,14 +597,9 @@ void Patch::UpdateActivePatches(bool reload_enabled_list, bool verbose, bool ver
 			message.empty() ? "" : ", ", c_count);
 	}
 
-	const u32 t_count = EnablePatches(s_tool_patches, s_enabled_tool_patches);
-	if (t_count > 0)
-		fmt::format_to(std::back_inserter(message), TRANSLATE_SV("Patch", "{}{} tool patches"),
-			message.empty() ? "" : ", ", t_count);
-
 	// Display message on first boot when we load patches.
 	// Except when it's just GameDB.
-	const bool just_gamedb = (p_count == 0 && c_count == 0 && t_count == 0 && gp_count > 0);
+	const bool just_gamedb = (p_count == 0 && c_count == 0 && gp_count > 0);
 	if (verbose || (verbose_if_changed && prev_count != s_active_patches.size() && !just_gamedb))
 	{
 		if (!message.empty())
@@ -726,7 +680,6 @@ void Patch::UnloadPatches()
 	s_enabled_cheats = {};
 	decltype(s_cheat_patches)().swap(s_cheat_patches);
 	decltype(s_game_patches)().swap(s_game_patches);
-	decltype(s_tool_patches)().swap(s_tool_patches);
 	decltype(s_gamedb_patches)().swap(s_gamedb_patches);
 }
 
