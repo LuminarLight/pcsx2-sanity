@@ -359,10 +359,10 @@ void ImGuiManager::DrawSettingsOverlay()
 		EmuConfig.Cpu.Recompiler.GetEEClampMode(), static_cast<unsigned>(EmuConfig.Cpu.sseVU0MXCSR.GetRoundMode()),
 		EmuConfig.Cpu.Recompiler.GetVUClampMode(), EmuConfig.GS.VsyncQueueSize);
 
-	if (EmuConfig.EnableCheats || EmuConfig.EnableWideScreenPatches || EmuConfig.EnableNoInterlacingPatches)
+	if (EmuConfig.EnableCheats || EmuConfig.EnableWideScreenPatches || EmuConfig.EnableNoInterlacingPatches || EmuConfig.EnableToolMode)
 	{
-		APPEND("C={}{}{} ", EmuConfig.EnableCheats ? "C" : "", EmuConfig.EnableWideScreenPatches ? "W" : "",
-			EmuConfig.EnableNoInterlacingPatches ? "N" : "");
+		APPEND("C={}{}{}{} ", EmuConfig.EnableCheats ? "C" : "", EmuConfig.EnableWideScreenPatches ? "W" : "",
+			EmuConfig.EnableNoInterlacingPatches ? "N" : "", EmuConfig.EnableToolMode ? "T" : "");
 	}
 
 	if (GSConfig.UseHardwareRenderer())

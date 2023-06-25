@@ -347,12 +347,15 @@ std::vector<std::string> Patch::FindPatchFilesOnDisk(const std::string_view& ser
 		ret.push_back(std::move(fd.FileName));
 
 	// TOOL Patches
-	FileSystem::FindFiles(EmuFolders::ToolPatches.c_str(),
-		GetPnachTemplate(serial, crc, false, true).c_str(), FILESYSTEM_FIND_FILES | FILESYSTEM_FIND_HIDDEN_FILES,
-		&files);
-	ret.reserve(ret.size() + files.size());
-	for (FILESYSTEM_FIND_DATA& fd : files)
-		ret.push_back(std::move(fd.FileName));
+	if (!cheats)
+	{
+		FileSystem::FindFiles(EmuFolders::ToolPatches.c_str(),
+			GetPnachTemplate(serial, crc, false, true).c_str(), FILESYSTEM_FIND_FILES | FILESYSTEM_FIND_HIDDEN_FILES,
+			&files);
+		ret.reserve(ret.size() + files.size());
+		for (FILESYSTEM_FIND_DATA& fd : files)
+			ret.push_back(std::move(fd.FileName));
+	}	
 
 	return ret;
 }
@@ -499,16 +502,20 @@ void Patch::ReloadEnabledLists()
 		}
 	}
 
-	s_enabled_tool_patches = Host::GetStringListSetting(TOOL_PATCHES_CONFIG_SECTION, PATCH_ENABLE_CONFIG_KEY);
-
 	// TOOL Patches
 	if (EmuConfig.EnableToolMode)
 	{
+		s_enabled_tool_patches = Host::GetStringListSetting(TOOL_PATCHES_CONFIG_SECTION, PATCH_ENABLE_CONFIG_KEY);
+
 		if (std::none_of(s_enabled_tool_patches.begin(), s_enabled_tool_patches.end(),
 				[](const std::string& it) { return (it == TOOL_PATCH_NAME); }))
 		{
 			s_enabled_tool_patches.emplace_back(TOOL_PATCH_NAME);
 		}
+	}
+	else
+	{
+		s_enabled_tool_patches = {};
 	}
 }
 
@@ -528,8 +535,9 @@ u32 Patch::EnablePatches(const PatchList& patches, const EnablePatchList& enable
 		for (const PatchCommand& ip : p.patches)
 		{
 			// print the actual patch lines only in verbose mode (even in devel)
-			if (DevConWriterEnabled)
-				DevCon.Indent().WriteLn(ip.ToString());
+			if (true)
+				Console.WriteLn(Color_Magenta, fmt::format("Enabled patch: {}", ip.ToString()));
+				//DevCon.Indent().WriteLn(ip.ToString());
 
 			s_active_patches.push_back(&ip);
 		}
@@ -632,11 +640,12 @@ void Patch::UpdateActivePatches(bool reload_enabled_list, bool verbose, bool ver
 
 	const u32 t_count = EnablePatches(s_tool_patches, s_enabled_tool_patches);
 	if (t_count > 0)
-		fmt::format_to(std::back_inserter(message), "{}{} tool patches", message.empty() ? "" : ", ", t_count);
+		fmt::format_to(std::back_inserter(message), TRANSLATE_SV("Patch", "{}{} tool patches"),
+			message.empty() ? "" : ", ", t_count);
 
 	// Display message on first boot when we load patches.
 	// Except when it's just GameDB.
-	const bool just_gamedb = (p_count == 0 && c_count == 0 && gp_count > 0);
+	const bool just_gamedb = (p_count == 0 && c_count == 0 && t_count == 0 && gp_count > 0);
 	if (verbose || (verbose_if_changed && prev_count != s_active_patches.size() && !just_gamedb))
 	{
 		if (!message.empty())
