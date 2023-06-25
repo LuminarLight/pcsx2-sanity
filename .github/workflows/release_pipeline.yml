@@ -19,7 +19,7 @@ jobs:
       buildAppImage: true
     secrets: inherit
   build_linux_flatpak:
-    if: github.repository == 'PCSX2/pcsx2'
+    if: github.repository == 'LuminarLight/pcsx2-sanity'
     name: "Linux"
     uses: ./.github/workflows/linux_build_flatpak.yml
     with:

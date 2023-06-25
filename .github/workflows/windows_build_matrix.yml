@@ -12,7 +12,7 @@ jobs:
   # MSBUILD
   lint_vs_proj_files:
     name: Lint VS Project Files
-    if: github.repository != 'PCSX2/pcsx2' || github.event_name == 'pull_request'
+    if: github.repository != 'LuminarLight/pcsx2-sanity' || github.event_name == 'pull_request'
     runs-on: windows-2019
     steps:
       - name: Checkout Repository
@@ -23,7 +23,7 @@ jobs:
   build_qt_sse4:
     needs: lint_vs_proj_files
     name: "SSE4"
-    if: github.repository != 'PCSX2/pcsx2' || github.event_name == 'pull_request'
+    if: github.repository != 'LuminarLight/pcsx2-sanity' || github.event_name == 'pull_request'
     uses: ./.github/workflows/windows_build_qt.yml
     with:
       jobName: Qt
@@ -34,7 +34,7 @@ jobs:
   build_qt_avx2:
     needs: lint_vs_proj_files
     name: "AVX2"
-    if: github.repository != 'PCSX2/pcsx2' || github.event_name == 'pull_request'
+    if: github.repository != 'LuminarLight/pcsx2-sanity' || github.event_name == 'pull_request'
     uses: ./.github/workflows/windows_build_qt.yml
     with:
       jobName: Qt
@@ -43,7 +43,7 @@ jobs:
 
   build_qt_cmake:
     name: "CMake"
-    if: github.repository != 'PCSX2/pcsx2' || github.event_name == 'pull_request'
+    if: github.repository != 'LuminarLight/pcsx2-sanity' || github.event_name == 'pull_request'
     uses: ./.github/workflows/windows_build_qt.yml
     with:
       jobName: Qt
@@ -54,7 +54,7 @@ jobs:
   build_qt_clang_sse4:
     needs: lint_vs_proj_files
     name: "SSE4"
-    if: github.repository != 'PCSX2/pcsx2' || github.event_name == 'pull_request'
+    if: github.repository != 'LuminarLight/pcsx2-sanity' || github.event_name == 'pull_request'
     uses: ./.github/workflows/windows_build_qt.yml
     with:
       jobName: Qt Clang
@@ -65,7 +65,7 @@ jobs:
   build_qt_clang_avx2:
     needs: lint_vs_proj_files
     name: "AVX2"
-    if: github.repository != 'PCSX2/pcsx2' || github.event_name == 'pull_request'
+    if: github.repository != 'LuminarLight/pcsx2-sanity' || github.event_name == 'pull_request'
     uses: ./.github/workflows/windows_build_qt.yml
     with:
       jobName: Qt Clang
@@ -74,7 +74,7 @@ jobs:
 
   build_qt_cmake_clang:
     name: "CMake"
-    if: github.repository != 'PCSX2/pcsx2' || github.event_name == 'pull_request'
+    if: github.repository != 'LuminarLight/pcsx2-sanity' || github.event_name == 'pull_request'
     uses: ./.github/workflows/windows_build_qt.yml
     with:
       jobName: Qt Clang
