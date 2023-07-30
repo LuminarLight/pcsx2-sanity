@@ -360,7 +360,7 @@ void ImGuiManager::DrawSettingsOverlay()
 
 	if (EmuConfig.EnableCheats || EmuConfig.EnableWideScreenPatches || EmuConfig.EnableNoInterlacingPatches)
 	{
-		APPEND("C={}{}{}{} ", EmuConfig.EnableCheats ? "C" : "", EmuConfig.EnableWideScreenPatches ? "W" : "",
+		APPEND("C={}{}{} ", EmuConfig.EnableCheats ? "C" : "", EmuConfig.EnableWideScreenPatches ? "W" : "",
 			EmuConfig.EnableNoInterlacingPatches ? "N" : "");
 	}
 
