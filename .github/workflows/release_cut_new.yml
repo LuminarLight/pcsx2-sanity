@@ -67,7 +67,7 @@ jobs:
         with:
           body_path: ./release-notes.md
           draft: true
-          prerelease: true
+          prerelease: false
           tag_name: ${{ steps.tag_version.outputs.new_tag }}
 
   # Build Everything
