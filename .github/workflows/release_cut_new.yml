@@ -26,7 +26,7 @@ permissions:
 
 jobs:
   cut-release:
-    if: github.repository == 'PCSX2/pcsx2'
+    if: github.repository == 'LuminarLight/pcsx2-sanity'
     runs-on: ubuntu-latest
     name: "Create Tag and Release"
     steps:
@@ -50,8 +50,8 @@ jobs:
 
       - name: Generate Release Notes
         env:
-          OWNER: PCSX2
-          REPO: pcsx2
+          OWNER: LuminarLight
+          REPO: pcsx2-sanity
           GITHUB_TOKEN: ${{ github.token }}
           COMMIT_SHA: ${{ github.SHA }}
         run: |
@@ -72,7 +72,7 @@ jobs:
   # Build Everything
   # Linux
   build_linux_qt:
-    if: github.repository == 'PCSX2/pcsx2'
+    if: github.repository == 'LuminarLight/pcsx2-sanity'
     needs:
       - cut-release
     name: "Linux"
@@ -86,7 +86,7 @@ jobs:
     secrets: inherit
 
   build_linux_flatpak:
-    if: github.repository == 'PCSX2/pcsx2'
+    if: github.repository == 'LuminarLight/pcsx2-sanity'
     needs:
       - cut-release
     name: "Linux"
@@ -102,7 +102,7 @@ jobs:
 
   # Windows
   build_windows_qt:
-    if: github.repository == 'PCSX2/pcsx2'
+    if: github.repository == 'LuminarLight/pcsx2-sanity'
     needs:
       - cut-release
     name: "Windows"
@@ -117,7 +117,7 @@ jobs:
 
   # MacOS
   build_macos_qt:
-    if: github.repository == 'PCSX2/pcsx2'
+    if: github.repository == 'LuminarLight/pcsx2-sanity'
     needs:
       - cut-release
     name: "MacOS"
@@ -129,7 +129,7 @@ jobs:
 
   # Upload the Artifacts
   upload_artifacts:
-    if: github.repository == 'PCSX2/pcsx2'
+    if: github.repository == 'LuminarLight/pcsx2-sanity'
     needs:
       - build_linux_flatpak
       - build_linux_qt
@@ -171,11 +171,11 @@ jobs:
         run: |
           TAG_VAL=$(git tag --points-at HEAD)
           echo "TAG_VAL=${TAG_VAL}"
-          gh release list --repo PCSX2/pcsx2
+          gh release list --repo LuminarLight/pcsx2-sanity
           mkdir -p ${{ github.WORKSPACE }}/ci-artifacts/out
           TAG_VAL=${TAG_VAL} python ./.github/workflows/scripts/releases/rename-release-assets.py
           ls ${{ github.WORKSPACE }}/ci-artifacts/out
-          gh release upload "${TAG_VAL}" ${{ github.WORKSPACE }}/ci-artifacts/out/*  --repo PCSX2/pcsx2 --clobber
+          gh release upload "${TAG_VAL}" ${{ github.WORKSPACE }}/ci-artifacts/out/*  --repo LuminarLight/pcsx2-sanity --clobber
 
       - name: Publish Release
         env:
@@ -183,4 +183,4 @@ jobs:
         run: |
           TAG_VAL=$(git tag --points-at HEAD)
           echo "TAG_VAL=${TAG_VAL}"
-          gh release edit ${TAG_VAL} --draft=false --repo PCSX2/pcsx2
+          gh release edit ${TAG_VAL} --draft=false --repo LuminarLight/pcsx2-sanity
