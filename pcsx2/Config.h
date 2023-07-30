@@ -170,15 +170,13 @@ enum GamefixId
 // TODO - config - not a fan of the excessive use of enums and macros to make them work
 // a proper object would likely make more sense (if possible).
 
-enum SpeedhackId
+enum class SpeedHack
 {
-	SpeedhackId_FIRST = 0,
-
-	Speedhack_mvuFlag = SpeedhackId_FIRST,
-	Speedhack_InstantVU1,
-	Speedhack_MTVU,
-
-	SpeedhackId_COUNT
+	MVUFlag,
+	InstantVU1,
+	MTVU,
+	EECycleRate,
+	MaxCount,
 };
 
 enum class VsyncMode
@@ -366,6 +364,14 @@ enum class GSTextureInRtMode : u8
 	MergeTargets,
 };
 
+enum class GSBilinearDirtyMode : u8
+{
+	Automatic,
+	ForceBilinear,
+	ForceNearest,
+	MaxCount
+};
+
 // Template function for casting enumerations to their underlying type
 template <typename Enumeration>
 typename std::underlying_type<Enumeration>::type enum_cast(Enumeration E)
@@ -374,7 +380,6 @@ typename std::underlying_type<Enumeration>::type enum_cast(Enumeration E)
 }
 
 ImplementEnumOperators(GamefixId);
-ImplementEnumOperators(SpeedhackId);
 
 //------------ DEFAULT sseMXCSR VALUES ---------------
 #define DEFAULT_sseMXCSR 0xffc0 //FPU rounding > DaZ, FtZ, "chop"
@@ -686,7 +691,6 @@ struct Pcsx2Config
 					UserHacks_DisableRenderFixes : 1,
 					UserHacks_MergePPSprite : 1,
 					UserHacks_WildHack : 1,
-					UserHacks_BilinearHack : 1,
 					UserHacks_NativePaletteDraw : 1,
 					UserHacks_TargetPartialInvalidation : 1,
 					UserHacks_EstimateTextureRegion : 1,
@@ -751,6 +755,7 @@ struct Pcsx2Config
 		u8 TVShader = 0;
 		s16 GetSkipCountFunctionId = -1;
 		s16 BeforeDrawFunctionId = -1;
+		s16 MoveHandlerFunctionId = -1;
 		int SkipDrawStart = 0;
 		int SkipDrawEnd = 0;
 
@@ -765,6 +770,7 @@ struct Pcsx2Config
 		u8 UserHacks_CPUCLUTRender = 0;
 		GSGPUTargetCLUTMode UserHacks_GPUTargetCLUTMode = GSGPUTargetCLUTMode::Disabled;
 		GSTextureInRtMode UserHacks_TextureInsideRt = GSTextureInRtMode::Disabled;
+		GSBilinearDirtyMode UserHacks_BilinearHack = GSBilinearDirtyMode::Automatic;
 		TriFiltering TriFilter = TriFiltering::Automatic;
 		s8 OverrideTextureBarriers = -1;
 
@@ -1068,6 +1074,10 @@ struct Pcsx2Config
 	// ------------------------------------------------------------------------
 	struct SpeedhackOptions
 	{
+		static constexpr s8 MIN_EE_CYCLE_RATE = -3;
+		static constexpr s8 MAX_EE_CYCLE_RATE = 3;
+		static constexpr u8 MAX_EE_CYCLE_SKIP = 3;
+
 		BITFIELD32()
 		bool
 			fastCDVD : 1, // enables fast CDVD access
@@ -1085,17 +1095,13 @@ struct Pcsx2Config
 		void LoadSave(SettingsWrapper& conf);
 		SpeedhackOptions& DisableAll();
 
-		void Set(SpeedhackId id, bool enabled = true);
+		void Set(SpeedHack id, int value);
 
-		bool operator==(const SpeedhackOptions& right) const
-		{
-			return OpEqu(bitset) && OpEqu(EECycleRate) && OpEqu(EECycleSkip);
-		}
+		bool operator==(const SpeedhackOptions& right) const;
+		bool operator!=(const SpeedhackOptions& right) const;
 
-		bool operator!=(const SpeedhackOptions& right) const
-		{
-			return !this->operator==(right);
-		}
+		static const char* GetSpeedHackName(SpeedHack id);
+		static std::optional<SpeedHack> ParseSpeedHackName(const std::string_view& name);
 	};
 
 	struct DebugOptions
@@ -1170,10 +1176,7 @@ struct Pcsx2Config
 	// ------------------------------------------------------------------------
 	struct USBOptions
 	{
-		enum : u32
-		{
-			NUM_PORTS = 2
-		};
+		static constexpr u32 NUM_PORTS = 2;
 
 		struct Port
 		{

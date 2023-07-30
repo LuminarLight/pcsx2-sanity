@@ -15,6 +15,7 @@
 
 #pragma once
 
+#include <span>
 #include <vector>
 
 // Number of stereo samples per SndOut block.
@@ -319,12 +320,14 @@ namespace SndBuffer
 class SndOutModule
 {
 public:
-	// Virtual destructor, because it helps fight C+++ funny-business.
-	virtual ~SndOutModule() {}
+	virtual ~SndOutModule() = default;
 
 	// Returns a unique identification string for this driver.
 	// (usually just matches the driver's cpp filename)
 	virtual const char* GetIdent() const = 0;
+
+	// Returns the full name for this driver, and can be translated.
+	virtual const char* GetDisplayName() const = 0;
 
 	// Returns a null-terminated list of backends, or nullptr.
 	virtual const char* const* GetBackendNames() const = 0;
@@ -343,10 +346,4 @@ public:
 	virtual int GetEmptySampleCount() = 0;
 };
 
-#ifdef _WIN32
-extern SndOutModule* XAudio2Out;
-#endif
-#if defined(SPU2X_CUBEB)
-extern SndOutModule* CubebOut;
-#endif
-
+std::span<SndOutModule*> GetSndOutModules();

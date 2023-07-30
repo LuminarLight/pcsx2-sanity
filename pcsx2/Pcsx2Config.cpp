@@ -23,7 +23,7 @@
 #include "Config.h"
 #include "GS.h"
 #include "CDVD/CDVDcommon.h"
-#include "MemoryCardFile.h"
+#include "SIO/Memcard/MemoryCardFile.h"
 #include "USB/USB.h"
 
 #ifdef _WIN32
@@ -177,34 +177,60 @@ void TraceLogFilters::LoadSave(SettingsWrapper& wrap)
 	SettingsWrapEntry(IOP.bitset);
 }
 
-const char* const tbl_SpeedhackNames[] =
-{
+static constexpr const char* s_speed_hack_names[] = {
 	"mvuFlag",
-	"InstantVU1",
-	"MTVU"
+	"instantVU1",
+	"mtvu",
+	"eeCycleRate",
 };
 
-const char* EnumToString(SpeedhackId id)
+const char* Pcsx2Config::SpeedhackOptions::GetSpeedHackName(SpeedHack id)
 {
-	return tbl_SpeedhackNames[id];
+	pxAssert(static_cast<u32>(id) < std::size(s_speed_hack_names));
+	return s_speed_hack_names[static_cast<u32>(id)];
 }
 
-void Pcsx2Config::SpeedhackOptions::Set(SpeedhackId id, bool enabled)
+std::optional<SpeedHack> Pcsx2Config::SpeedhackOptions::ParseSpeedHackName(const std::string_view& name)
 {
-	pxAssert(EnumIsValid(id));
+	for (u32 i = 0; i < std::size(s_speed_hack_names); i++)
+	{
+		if (name == s_speed_hack_names[i])
+			return static_cast<SpeedHack>(i);
+	}
+
+	return std::nullopt;
+}
+
+void Pcsx2Config::SpeedhackOptions::Set(SpeedHack id, int value)
+{
+	pxAssert(static_cast<u32>(id) < std::size(s_speed_hack_names));
+
 	switch (id)
 	{
-		case Speedhack_mvuFlag:
-			vuFlagHack = enabled;
+		case SpeedHack::MVUFlag:
+			vuFlagHack = (value != 0);
 			break;
-		case Speedhack_InstantVU1:
-			vu1Instant = enabled;
+		case SpeedHack::InstantVU1:
+			vu1Instant = (value != 0);
 			break;
-		case Speedhack_MTVU:
-			vuThread = enabled;
+		case SpeedHack::MTVU:
+			vuThread = (value != 0);
 			break;
-        jNO_DEFAULT;
+		case SpeedHack::EECycleRate:
+			EECycleRate = static_cast<int>(std::clamp<int>(value, MIN_EE_CYCLE_RATE, MAX_EE_CYCLE_RATE));
+			break;
+			jNO_DEFAULT
 	}
+}
+
+bool Pcsx2Config::SpeedhackOptions::operator==(const SpeedhackOptions& right) const
+{
+	return OpEqu(bitset) && OpEqu(EECycleRate) && OpEqu(EECycleSkip);
+}
+
+bool Pcsx2Config::SpeedhackOptions::operator!=(const SpeedhackOptions& right) const
+{
+	return !operator==(right);
 }
 
 Pcsx2Config::SpeedhackOptions::SpeedhackOptions()
@@ -239,6 +265,9 @@ void Pcsx2Config::SpeedhackOptions::LoadSave(SettingsWrapper& wrap)
 	SettingsWrapBitBool(vuFlagHack);
 	SettingsWrapBitBool(vuThread);
 	SettingsWrapBitBool(vu1Instant);
+
+	EECycleRate = std::clamp(EECycleRate, MIN_EE_CYCLE_RATE, MAX_EE_CYCLE_RATE);
+	EECycleSkip = std::min(EECycleSkip, MAX_EE_CYCLE_SKIP);
 }
 
 void Pcsx2Config::ProfilerOptions::LoadSave(SettingsWrapper& wrap)
@@ -432,6 +461,7 @@ const char* Pcsx2Config::GSOptions::BlendingLevelNames[] = {
 const char* Pcsx2Config::GSOptions::CaptureContainers[] = {
 	"mp4",
 	"mkv",
+	"mov",
 	"avi",
 	"wav",
 	"mp3",
@@ -508,7 +538,7 @@ Pcsx2Config::GSOptions::GSOptions()
 	UserHacks_DisableRenderFixes = false;
 	UserHacks_MergePPSprite = false;
 	UserHacks_WildHack = false;
-	UserHacks_BilinearHack = false;
+	UserHacks_BilinearHack = GSBilinearDirtyMode::Automatic;
 	UserHacks_NativePaletteDraw = false;
 
 	DumpReplaceableTextures = false;
@@ -580,6 +610,7 @@ bool Pcsx2Config::GSOptions::OptionsAreEqual(const GSOptions& right) const
 		OpEqu(TVShader) &&
 		OpEqu(GetSkipCountFunctionId) &&
 		OpEqu(BeforeDrawFunctionId) &&
+		OpEqu(MoveHandlerFunctionId) &&
 		OpEqu(SkipDrawEnd) &&
 		OpEqu(SkipDrawStart) &&
 
@@ -594,6 +625,7 @@ bool Pcsx2Config::GSOptions::OptionsAreEqual(const GSOptions& right) const
 		OpEqu(UserHacks_CPUCLUTRender) &&
 		OpEqu(UserHacks_GPUTargetCLUTMode) &&
 		OpEqu(UserHacks_TextureInsideRt) &&
+		OpEqu(UserHacks_BilinearHack) &&
 		OpEqu(OverrideTextureBarriers) &&
 
 		OpEqu(CAS_Sharpness) &&
@@ -727,7 +759,7 @@ void Pcsx2Config::GSOptions::LoadSave(SettingsWrapper& wrap)
 	GSSettingBoolEx(UserHacks_DisableRenderFixes, "UserHacks_DisableRenderFixes");
 	GSSettingBoolEx(UserHacks_MergePPSprite, "UserHacks_merge_pp_sprite");
 	GSSettingBoolEx(UserHacks_WildHack, "UserHacks_WildHack");
-	GSSettingBoolEx(UserHacks_BilinearHack, "UserHacks_BilinearHack");
+	GSSettingIntEnumEx(UserHacks_BilinearHack, "UserHacks_BilinearHack");
 	GSSettingBoolEx(UserHacks_NativePaletteDraw, "UserHacks_NativePaletteDraw");
 	GSSettingIntEnumEx(UserHacks_TextureInsideRt, "UserHacks_TextureInsideRt");
 	GSSettingBoolEx(UserHacks_TargetPartialInvalidation, "UserHacks_TargetPartialInvalidation");
@@ -846,7 +878,6 @@ void Pcsx2Config::GSOptions::MaskUserHacks()
 	UserHacks_AlignSpriteX = false;
 	UserHacks_MergePPSprite = false;
 	UserHacks_WildHack = false;
-	UserHacks_BilinearHack = false;
 	UserHacks_NativePaletteDraw = false;
 	UserHacks_DisableSafeFeatures = false;
 	UserHacks_DisableRenderFixes = false;
@@ -868,6 +899,7 @@ void Pcsx2Config::GSOptions::MaskUserHacks()
 	UserHacks_CPUSpriteRenderLevel = 0;
 	UserHacks_CPUCLUTRender = 0;
 	UserHacks_GPUTargetCLUTMode = GSGPUTargetCLUTMode::Disabled;
+	UserHacks_BilinearHack = GSBilinearDirtyMode::Automatic;
 	SkipDrawStart = 0;
 	SkipDrawEnd = 0;
 }
@@ -880,7 +912,7 @@ void Pcsx2Config::GSOptions::MaskUpscalingHacks()
 	UserHacks_AlignSpriteX = false;
 	UserHacks_MergePPSprite = false;
 	UserHacks_WildHack = false;
-	UserHacks_BilinearHack = false;
+	UserHacks_BilinearHack = GSBilinearDirtyMode::Automatic;
 	UserHacks_NativePaletteDraw = false;
 	UserHacks_HalfPixelOffset = 0;
 	UserHacks_RoundSprite = 0;
@@ -1373,7 +1405,6 @@ Pcsx2Config::Pcsx2Config()
 	{
 		Mcd[slot].Enabled = !FileMcd_IsMultitapSlot(slot); // enables main 2 slots
 		Mcd[slot].Filename = FileMcd_GetDefaultName(slot);
-
 		// Folder memory card is autodetected later.
 		Mcd[slot].Type = MemoryCardType::File;
 	}
