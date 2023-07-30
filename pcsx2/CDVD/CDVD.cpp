@@ -468,6 +468,32 @@ static CDVDDiscType GetPS2ElfName(IsoReader& isor, std::string* name, std::strin
 	version->clear();
 
 	std::vector<u8> data;
+
+	// Check if there is FIREWIRE.IRX, and treat it as main ELF if there is.
+	if (isor.ReadFile("DRIVERS\\FIREWIRE.IRX", &data, error))
+	{
+		Console.Warning("(FIREWIRE.IRX) Found it, using this.");
+		*name = "cdrom0:\\DRIVERS\\FIREWIRE.IRX;1";
+		return CDVDDiscType::PS2Disc;
+	}
+	else
+	{
+		Console.Warning("(FIREWIRE.IRX) Not found.");
+	}
+
+	// Check if there is DISKINFO.BIN, and treat it as main ELF if there is.
+	if (isor.ReadFile("DISKINFO.BIN", &data, error))
+	{
+		Console.Warning("(DISKINFO.BIN) Found it, using this.");
+		*name = "cdrom0:\\DISKINFO.BIN;1";
+		return CDVDDiscType::PS2Disc;
+	}
+	else
+	{
+		Console.Warning("(DISKINFO.BIN) Not found.");
+	}
+	
+	// Normal behaviour.
 	if (!isor.ReadFile("SYSTEM.CNF", &data, error))
 		return CDVDDiscType::Other;
 
@@ -546,6 +572,7 @@ static std::string ExecutablePathToSerial(const std::string& path)
 												   "-???.??*")) // double quote because trigraphs
 	{
 		serial.clear();
+		serial = "X";
 	}
 
 	// SCES_123.45 -> SCES-12345
