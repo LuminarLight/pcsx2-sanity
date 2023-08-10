@@ -184,19 +184,3 @@ jobs:
           TAG_VAL=${{needs.cut-release.outputs.new_tag}}
           echo "TAG_VAL=${TAG_VAL}"
           gh release edit ${TAG_VAL} --draft=false --repo LuminarLight/pcsx2-sanity
-
-      - uses: actions/setup-node@v3
-        with:
-          node-version: 16
-
-      - name: Announce Release
-        env:
-          OWNER: PCSX2
-          REPO: pcsx2
-          DISCORD_BUILD_WEBHOOK: ${{ secrets.DISCORD_BUILD_WEBHOOK }}
-          GITHUB_TOKEN: ${{ github.token }}
-        run: |
-          TAG_VAL=${{needs.cut-release.outputs.new_tag}}
-          cd ./.github/workflows/scripts/releases/announce-release
-          npm ci
-          TAG_VAL=${TAG_VAL} node index.js
