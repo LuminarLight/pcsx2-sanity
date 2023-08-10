@@ -195,6 +195,36 @@ bool GSHwHack::GSC_Tekken5(GSRendererHW& r, int& skip)
 {
 	if (skip == 0)
 	{
+		if (r.IsPossibleChannelShuffle())
+		{
+			pxAssertMsg((RTBP0 & 31) == 0, "TEX0 should be page aligned");
+
+			GSTextureCache::Target* rt = g_texture_cache->LookupTarget(GIFRegTEX0::Create(RTBP0, RFBW, RFPSM),
+				GSVector2i(1, 1), r.GetTextureScaleFactor(), GSTextureCache::RenderTarget);
+			if (!rt)
+				return false;
+
+			GL_INS("GSC_Tekken5(): HLE channel shuffle");
+
+			// have to set up the palette ourselves too, since GSC executes before it does
+			r.m_mem.m_clut.Read32(RTEX0, r.m_draw_env->TEXA);
+			std::shared_ptr<GSTextureCache::Palette> palette =
+				g_texture_cache->LookupPaletteObject(r.m_mem.m_clut, GSLocalMemory::m_psm[RTEX0.PSM].pal, true);
+			if (!palette)
+				return false;
+
+			GSHWDrawConfig& conf = r.BeginHLEHardwareDraw(
+				rt->GetTexture(), nullptr, rt->GetScale(), rt->GetTexture(), rt->GetScale(), rt->GetUnscaledRect());
+			conf.pal = palette->GetPaletteGSTexture();
+			conf.ps.channel = ChannelFetch_RGB;
+			conf.colormask.wa = false;
+			r.EndHLEHardwareDraw(false);
+
+			// 12 pages: 2 calls by channel, 3 channels, 1 blit
+			skip = 12 * (3 + 3 + 1);
+			return true;
+		}
+
 		if (!s_nativeres && RTME && (RFBP == 0x02d60 || RFBP == 0x02d80 || RFBP == 0x02ea0 || RFBP == 0x03620 || RFBP == 0x03640) && RFPSM == RTPSM && RTBP0 == 0x00000 && RTPSM == PSMCT32)
 		{
 			// Don't enable hack on native res if crc is below aggressive.
@@ -487,19 +517,6 @@ bool GSHwHack::GSC_SakuraWarsSoLongMyLove(GSRendererHW& r, int& skip)
 		else if (RTME && (RFBP == 0 || RFBP == 0x1180) && RFPSM == PSMCT32 && RTBP0 == 0x3F3F && RTPSM == PSMT8)
 		{
 			skip = 1; // Floodlight
-		}
-	}
-
-	return true;
-}
-
-bool GSHwHack::GSC_GodHand(GSRendererHW& r, int& skip)
-{
-	if (skip == 0)
-	{
-		if (RTME && (RFBP == 0x0) && (RTBP0 == 0x2800) && RFPSM == RTPSM && RTPSM == PSMCT32)
-		{
-			skip = 1; // Blur
 		}
 	}
 
@@ -1408,7 +1425,6 @@ bool GSHwHack::MV_Ico(GSRendererHW& r)
 #define CRC_F(name) { #name, &GSHwHack::name }
 
 const GSHwHack::Entry<GSRendererHW::GSC_Ptr> GSHwHack::s_get_skip_count_functions[] = {
-	CRC_F(GSC_GodHand),
 	CRC_F(GSC_KnightsOfTheTemple2),
 	CRC_F(GSC_Kunoichi),
 	CRC_F(GSC_Manhunt2),
@@ -1502,9 +1518,9 @@ s16 GSLookupMoveHandlerFunctionId(const std::string_view& name)
 	return -1;
 }
 
-void GSRendererHW::UpdateCRCHacks()
+void GSRendererHW::UpdateRenderFixes()
 {
-	GSRenderer::UpdateCRCHacks();
+	GSRenderer::UpdateRenderFixes();
 
 	m_nativeres = (GSConfig.UpscaleMultiplier == 1.0f);
 	s_nativeres = m_nativeres;
