@@ -86,9 +86,10 @@ private:
 
 	void ResetStates();
 	void SetupIA(float target_scale, float sx, float sy);
-	void EmulateTextureShuffleAndFbmask(GSTextureCache::Target* rt);
+	void EmulateTextureShuffleAndFbmask(GSTextureCache::Target* rt, GSTextureCache::Source* tex);
 	bool EmulateChannelShuffle(GSTextureCache::Target* src, bool test_only);
 	void EmulateBlending(int rt_alpha_min, int rt_alpha_max, bool& DATE_PRIMID, bool& DATE_BARRIER, bool& blending_alpha_pass);
+	void CleanupDraw(bool invalidate_temp_src);
 
 	void EmulateTextureSampler(const GSTextureCache::Target* rt, const GSTextureCache::Target* ds,
 		GSTextureCache::Source* tex, const TextureMinMaxResult& tmm, GSTexture*& src_copy);
@@ -194,7 +195,7 @@ public:
 	void Lines2Sprites();
 	bool VerifyIndices();
 	void ExpandLineIndices();
-	void ConvertSpriteTextureShuffle(bool& write_ba, bool& read_ba);
+	void ConvertSpriteTextureShuffle(bool& write_ba, bool& read_ba, GSTextureCache::Target* rt, GSTextureCache::Source* tex);
 	GSVector4 RealignTargetTextureCoordinate(const GSTextureCache::Source* tex);
 	GSVector4i ComputeBoundingBox(const GSVector2i& rtsize, float rtscale);
 	void MergeSprite(GSTextureCache::Source* tex);

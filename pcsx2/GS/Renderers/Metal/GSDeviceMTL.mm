@@ -1803,6 +1803,7 @@ void GSDeviceMTL::MRESetHWPipelineState(GSHWDrawConfig::VSSelector vssel, GSHWDr
 		setFnConstantB(m_fn_constants, pssel.adjt,               GSMTLConstantIndex_PS_ADJT);
 		setFnConstantB(m_fn_constants, pssel.ltf,                GSMTLConstantIndex_PS_LTF);
 		setFnConstantB(m_fn_constants, pssel.shuffle,            GSMTLConstantIndex_PS_SHUFFLE);
+		setFnConstantB(m_fn_constants, pssel.shuffle_same,       GSMTLConstantIndex_PS_SHUFFLE_SAME);
 		setFnConstantB(m_fn_constants, pssel.read_ba,            GSMTLConstantIndex_PS_READ_BA);
 		setFnConstantB(m_fn_constants, pssel.real16src,          GSMTLConstantIndex_PS_READ16_SRC);
 		setFnConstantB(m_fn_constants, pssel.write_rg,           GSMTLConstantIndex_PS_WRITE_RG);
@@ -2048,6 +2049,18 @@ static id<MTLTexture> getTexture(GSTexture* tex)
 	return tex ? static_cast<GSTextureMTL*>(tex)->GetTexture() : nil;
 }
 
+static bool usesStencil(GSHWDrawConfig::DestinationAlphaMode dstalpha)
+{
+	switch (dstalpha)
+	{
+		case GSHWDrawConfig::DestinationAlphaMode::Stencil:
+		case GSHWDrawConfig::DestinationAlphaMode::StencilOne:
+			return true;
+		default:
+			return false;
+	}
+}
+
 void GSDeviceMTL::MREInitHWDraw(GSHWDrawConfig& config, const Map& verts)
 {
 	MRESetScissor(config.scissor);
@@ -2158,6 +2171,8 @@ void GSDeviceMTL::RenderHW(GSHWDrawConfig& config)
 	BeginRenderPass(@"RenderHW", rt, MTLLoadActionLoad, config.ds, MTLLoadActionLoad, stencil, MTLLoadActionLoad);
 	id<MTLRenderCommandEncoder> mtlenc = m_current_render.encoder;
 	FlushDebugEntries(mtlenc);
+	if (usesStencil(config.destination_alpha))
+		[mtlenc setStencilReferenceValue:1];
 	MREInitHWDraw(config, allocation);
 	if (config.require_one_barrier || config.require_full_barrier)
 		MRESetTexture(config.rt, GSMTLTextureIndexRenderTarget);

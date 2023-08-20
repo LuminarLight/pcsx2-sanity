@@ -277,7 +277,9 @@ void main()
 #define PS_TCOFFSETHACK 0
 #define PS_POINT_SAMPLER 0
 #define PS_SHUFFLE 0
+#define PS_SHUFFLE_SAME 0
 #define PS_READ_BA 0
+#define PS_WRITE_RG 0
 #define PS_READ16_SRC 0
 #define PS_DFMT 0
 #define PS_DEPTH_FMT 0
@@ -300,7 +302,7 @@ void main()
 #endif
 
 #define SW_BLEND (PS_BLEND_A || PS_BLEND_B || PS_BLEND_D)
-#define SW_BLEND_NEEDS_RT (PS_BLEND_A == 1 || PS_BLEND_B == 1 || PS_BLEND_C == 1 || PS_BLEND_D == 1)
+#define SW_BLEND_NEEDS_RT (SW_BLEND && (PS_BLEND_A == 1 || PS_BLEND_B == 1 || PS_BLEND_C == 1 || PS_BLEND_D == 1))
 #define SW_AD_TO_HW (PS_BLEND_C == 1 && PS_A_MASKED)
 
 #define PS_FEEDBACK_LOOP_IS_NEEDED (PS_TEX_IS_FB == 1 || PS_FBMASK || SW_BLEND_NEEDS_RT || (PS_DATE >= 5))
@@ -1197,33 +1199,36 @@ void main()
 	#if PS_SHUFFLE
 		uvec4 denorm_c = uvec4(C);
 		uvec2 denorm_TA = uvec2(vec2(TA.xy) * 255.0f + 0.5f);
-		#if PS_READ16_SRC
+		
+		// Special case for 32bit input and 16bit output, shuffle used by The Godfather
+		#if PS_SHUFFLE_SAME
+			#if (PS_READ_BA)
+				C = vec4(float((denorm_c.b & 0x7Fu) | (denorm_c.a & 0x80u)));
+			#else
+				C.ga = C.rg;
+			#endif
+		// Copy of a 16bit source in to this target
+		#elif PS_READ16_SRC
 			C.rb = vec2(float((denorm_c.r >> 3) | (((denorm_c.g >> 3) & 0x7u) << 5)));
 			if ((denorm_c.a & 0x80u) != 0u)
 				C.ga = vec2(float((denorm_c.g >> 6) | ((denorm_c.b >> 3) << 2) | (denorm_TA.y & 0x80u)));
 			else
 				C.ga = vec2(float((denorm_c.g >> 6) | ((denorm_c.b >> 3) << 2) | (denorm_TA.x & 0x80u)));
+		// Write RB part. Mask will take care of the correct destination
+		#elif PS_READ_BA
+			C.rb = C.bb;
+			if ((denorm_c.a & 0x80u) != 0u)
+				C.ga = vec2(float((denorm_c.a & 0x7Fu) | (denorm_TA.y & 0x80u)));
+			else
+				C.ga = vec2(float((denorm_c.a & 0x7Fu) | (denorm_TA.x & 0x80u)));
 		#else
-			// Mask will take care of the correct destination
-			#if PS_READ_BA
-				C.rb = C.bb;
-			#else
-				C.rb = C.rr;
-			#endif
-
-			#if PS_READ_BA
-				if ((denorm_c.a & 0x80u) != 0u)
-					C.ga = vec2(float((denorm_c.a & 0x7Fu) | (denorm_TA.y & 0x80u)));
-				else
-					C.ga = vec2(float((denorm_c.a & 0x7Fu) | (denorm_TA.x & 0x80u)));
-			#else
-				if ((denorm_c.g & 0x80u) != 0u)
-					C.ga = vec2(float((denorm_c.g & 0x7Fu) | (denorm_TA.y & 0x80u)));
-				else
-					C.ga = vec2(float((denorm_c.g & 0x7Fu) | (denorm_TA.x & 0x80u)));
-			#endif
-		#endif
-	#endif
+			C.rb = C.rr;
+			if ((denorm_c.g & 0x80u) != 0u)
+				C.ga = vec2(float((denorm_c.g & 0x7Fu) | (denorm_TA.y & 0x80u)));
+			else
+				C.ga = vec2(float((denorm_c.g & 0x7Fu) | (denorm_TA.x & 0x80u)));
+		#endif // PS_SHUFFLE_SAME
+	#endif // PS_SHUFFLE
 
 	// Must be done before alpha correction
 

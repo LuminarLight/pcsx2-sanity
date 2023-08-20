@@ -4669,6 +4669,7 @@ VkShaderModule GSDeviceVK::GetTFXFragmentShader(const GSHWDrawConfig::PSSelector
 	AddMacro(ss, "PS_FIXED_ONE_A", sel.fixed_one_a);
 	AddMacro(ss, "PS_IIP", sel.iip);
 	AddMacro(ss, "PS_SHUFFLE", sel.shuffle);
+	AddMacro(ss, "PS_SHUFFLE_SAME", sel.shuffle_same);
 	AddMacro(ss, "PS_READ_BA", sel.read_ba);
 	AddMacro(ss, "PS_READ16_SRC", sel.real16src);
 	AddMacro(ss, "PS_WRITE_RG", sel.write_rg);
@@ -5637,6 +5638,10 @@ void GSDeviceVK::RenderHW(GSHWDrawConfig& config)
 	{
 		pxAssertMsg(m_features.texture_barrier, "Texture barriers enabled");
 		PSSetShaderResource(2, draw_rt, false);
+
+		// If this is the first draw to the target as a feedback loop, make sure we re-generate the texture descriptor.
+		// Otherwise, we might have a previous descriptor left over, that has the RT in a different state.
+		m_dirty_flags |= (skip_first_barrier ? DIRTY_FLAG_TFX_TEXTURE_RT : 0);
 	}
 
 	// Begin render pass if new target or out of the area.
