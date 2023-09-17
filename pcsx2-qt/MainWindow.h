@@ -150,6 +150,8 @@ private Q_SLOTS:
 	void onChangeDiscMenuAboutToHide();
 	void onLoadStateMenuAboutToShow();
 	void onSaveStateMenuAboutToShow();
+	void onStartFullscreenUITriggered();
+	void onFullscreenUIStateChange(bool running);
 	void onViewToolbarActionToggled(bool checked);
 	void onViewLockToolbarActionToggled(bool checked);
 	void onViewStatusBarActionToggled(bool checked);
@@ -163,7 +165,9 @@ private Q_SLOTS:
 	void onAboutActionTriggered();
 	void onToolsOpenDataDirectoryTriggered();
 	void onToolsCoverDownloaderTriggered();
+	void onToolsEditCheatsPatchesTriggered(bool cheats);
 	void updateTheme();
+	void reloadThemeSpecificImages();
 	void updateLanguage();
 	void onScreenshotActionTriggered();
 	void onSaveGSDumpActionTriggered();
@@ -196,6 +200,7 @@ private Q_SLOTS:
 protected:
 	void showEvent(QShowEvent* event) override;
 	void closeEvent(QCloseEvent* event) override;
+	void changeEvent(QEvent* event) override;
 	void dragEnterEvent(QDragEnterEvent* event) override;
 	void dropEvent(QDropEvent* event) override;
 
@@ -220,6 +225,7 @@ private:
 
 	void updateEmulationActions(bool starting, bool running, bool stopping);
 	void updateDisplayRelatedActions(bool has_surface, bool render_to_main, bool fullscreen);
+	void updateGameDependentActions();
 	void updateStatusBarWidgetVisibility();
 	void updateWindowTitle();
 	void updateWindowState(bool force_visible = false);
@@ -265,7 +271,6 @@ private:
 	void loadSaveStateFile(const QString& filename, const QString& state_filename);
 	void populateLoadStateMenu(QMenu* menu, const QString& filename, const QString& serial, quint32 crc);
 	void populateSaveStateMenu(QMenu* menu, const QString& serial, quint32 crc);
-	void updateSaveStateMenusEnableState(bool enable);
 	void doStartFile(std::optional<CDVD_SourceType> source, const QString& path);
 	void doDiscChange(CDVD_SourceType source, const QString& path);
 

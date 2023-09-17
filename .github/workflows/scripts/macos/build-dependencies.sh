@@ -6,10 +6,9 @@ export MACOSX_DEPLOYMENT_TARGET=10.14
 
 INSTALLDIR="$HOME/deps"
 NPROCS="$(getconf _NPROCESSORS_ONLN)"
-SDL=SDL2-2.28.1
+SDL=SDL2-2.28.2
 PNG=1.6.37
 JPG=9e
-SOUNDTOUCH=soundtouch-2.3.1
 FFMPEG=6.0
 QT=6.4.3 # Currently stuck on Qt 6.4 due to 6.5 requiring macOS 11.0.
 
@@ -22,10 +21,9 @@ export CFLAGS="-I$INSTALLDIR/include -Os $CFLAGS"
 export CXXFLAGS="-I$INSTALLDIR/include -Os $CXXFLAGS"
 
 cat > SHASUMS <<EOF
-4977ceba5c0054dbe6c2f114641aced43ce3bf2b41ea64b6a372d6ba129cb15d  $SDL.tar.gz
+64b1102fa22093515b02ef33dd8739dee1ba57e9dbba6a092942b8bbed1a1c5e  $SDL.tar.gz
 505e70834d35383537b6491e7ae8641f1a4bed1876dbfe361201fc80868d88ca  libpng-$PNG.tar.xz
 4077d6a6a75aeb01884f708919d25934c93305e49f7e3f36db9129320e6f4f3d  jpegsrc.v$JPG.tar.gz
-6900996607258496ce126924a19fe9d598af9d892cf3f33d1e4daaa9b42ae0b1  $SOUNDTOUCH.tar.gz
 57be87c22d9b49c112b6d24bc67d42508660e6b718b3db89c44e47e289137082  ffmpeg-$FFMPEG.tar.xz
 5087c9e5b0165e7bc3c1a4ab176b35d0cd8f52636aea903fa377bdba00891a60  qtbase-everywhere-src-$QT.tar.xz
 0aff58062e74b84617c5da8325d8cdad5368d8f4d2a11ceafcd58329fe99b798  qtimageformats-everywhere-src-$QT.tar.xz
@@ -38,7 +36,6 @@ curl -L \
 	-O "https://libsdl.org/release/$SDL.tar.gz" \
 	-O "https://downloads.sourceforge.net/project/libpng/libpng16/$PNG/libpng-$PNG.tar.xz" \
 	-O "https://www.ijg.org/files/jpegsrc.v$JPG.tar.gz" \
-	-O "https://www.surina.net/soundtouch/$SOUNDTOUCH.tar.gz" \
 	-O "https://ffmpeg.org/releases/ffmpeg-$FFMPEG.tar.xz" \
 	-O "https://download.qt.io/official_releases/qt/${QT%.*}/$QT/submodules/qtbase-everywhere-src-$QT.tar.xz" \
 	-O "https://download.qt.io/official_releases/qt/${QT%.*}/$QT/submodules/qtimageformats-everywhere-src-$QT.tar.xz" \
@@ -51,9 +48,27 @@ shasum -a 256 --check SHASUMS
 echo "Installing SDL..."
 tar xf "$SDL.tar.gz"
 cd "$SDL"
-./configure --prefix "$INSTALLDIR" --without-x
-make "-j$NPROCS"
-make install
+
+# MFI causes multiple joystick connection events, I'm guessing because both the HIDAPI and MFI interfaces
+# race each other, and sometimes both end up getting through. So, just force MFI off.
+patch -u CMakeLists.txt <<EOF
+--- CMakeLists.txt	2023-08-03 01:33:11
++++ CMakeLists.txt	2023-08-26 12:58:53
+@@ -2105,7 +2105,7 @@
+           #import <Foundation/Foundation.h>
+           #import <CoreHaptics/CoreHaptics.h>
+           int main() { return 0; }" HAVE_FRAMEWORK_COREHAPTICS)
+-      if(HAVE_FRAMEWORK_GAMECONTROLLER AND HAVE_FRAMEWORK_COREHAPTICS)
++      if(HAVE_FRAMEWORK_GAMECONTROLLER AND HAVE_FRAMEWORK_COREHAPTICS AND FALSE)
+         # Only enable MFI if we also have CoreHaptics to ensure rumble works
+         set(SDL_JOYSTICK_MFI 1)
+         set(SDL_FRAMEWORK_GAMECONTROLLER 1)
+
+EOF
+
+cmake -B build -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$INSTALLDIR" -DSDL_X11=OFF
+make -C build "-j$NPROCS"
+make -C build install
 cd ..
 
 echo "Installing libpng..."
@@ -70,14 +85,6 @@ cd "jpeg-$JPG"
 ./configure --prefix "$INSTALLDIR" --disable-dependency-tracking
 make "-j$NPROCS"
 make install
-cd ..
-
-echo "Installing soundtouch..."
-tar xf "$SOUNDTOUCH.tar.gz"
-cd "$SOUNDTOUCH"
-cmake -B build -DCMAKE_INSTALL_PREFIX="$INSTALLDIR" -DCMAKE_BUILD_TYPE=MinSizeRel
-make -C build "-j$NPROCS"
-make -C build install
 cd ..
 
 echo "Installing FFmpeg..."

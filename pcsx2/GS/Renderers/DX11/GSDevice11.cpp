@@ -159,11 +159,8 @@ bool GSDevice11::Create()
 	D3D11_RASTERIZER_DESC rd;
 	D3D11_BLEND_DESC bsd;
 
-	D3D_FEATURE_LEVEL level;
-
 	if (GSConfig.UseDebugDevice)
 		m_annotation = m_ctx.try_query<ID3DUserDefinedAnnotation>();
-	level = m_dev->GetFeatureLevel();
 
 	if (!m_shader_cache.Open(m_dev->GetFeatureLevel(), GSConfig.UseDebugDevice))
 		Console.Warning("Shader cache failed to open.");
@@ -2022,16 +2019,16 @@ void GSDevice11::OMSetDepthStencilState(ID3D11DepthStencilState* dss, u8 sref)
 	}
 }
 
-void GSDevice11::OMSetBlendState(ID3D11BlendState* bs, float bf)
+void GSDevice11::OMSetBlendState(ID3D11BlendState* bs, u8 bf)
 {
 	if (m_state.bs != bs || m_state.bf != bf)
 	{
 		m_state.bs = bs;
 		m_state.bf = bf;
 
-		const float BlendFactor[] = {bf, bf, bf, 0};
+		const GSVector4 col(static_cast<float>(bf) / 128.0f);
 
-		m_ctx->OMSetBlendState(bs, BlendFactor, 0xffffffff);
+		m_ctx->OMSetBlendState(bs, col.v, 0xffffffff);
 	}
 }
 

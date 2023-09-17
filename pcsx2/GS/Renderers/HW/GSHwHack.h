@@ -45,10 +45,10 @@ public:
 	static bool GSC_PolyphonyDigitalGames(GSRendererHW& r, int& skip);
 	static bool GSC_MetalGearSolid3(GSRendererHW& r, int& skip);
 	static bool GSC_BigMuthaTruckers(GSRendererHW& r, int& skip);
+	static bool GSC_HitmanBloodMoney(GSRendererHW& r, int& skip);
 
 	static bool OI_PointListPalette(GSRendererHW& r, GSTexture* rt, GSTexture* ds, GSTextureCache::Source* t);
 	static bool OI_DBZBTGames(GSRendererHW& r, GSTexture* rt, GSTexture* ds, GSTextureCache::Source* t);
-	static bool OI_FFX(GSRendererHW& r, GSTexture* rt, GSTexture* ds, GSTextureCache::Source* t);
 	static bool OI_RozenMaidenGebetGarden(GSRendererHW& r, GSTexture* rt, GSTexture* ds, GSTextureCache::Source* t);
 	static bool OI_SonicUnleashed(GSRendererHW& r, GSTexture* rt, GSTexture* ds, GSTextureCache::Source* t);
 	static bool OI_ArTonelico2(GSRendererHW& r, GSTexture* rt, GSTexture* ds, GSTextureCache::Source* t);

@@ -658,7 +658,6 @@ struct Pcsx2Config
 					PCRTCOffsets : 1,
 					PCRTCOverscan : 1,
 					IntegerScaling : 1,
-					SyncToHostRefreshRate : 1,
 					UseDebugDevice : 1,
 					UseBlitSwapChain : 1,
 					DisableShaderCache : 1,
@@ -697,7 +696,6 @@ struct Pcsx2Config
 					UserHacks_MergePPSprite : 1,
 					UserHacks_WildHack : 1,
 					UserHacks_NativePaletteDraw : 1,
-					UserHacks_TargetPartialInvalidation : 1,
 					UserHacks_EstimateTextureRegion : 1,
 					FXAA : 1,
 					ShadeBoost : 1,
@@ -727,11 +725,9 @@ struct Pcsx2Config
 		// forces the MTGS to execute tags/tasks in fully blocking/synchronous
 		// style. Useful for debugging potential bugs in the MTGS pipeline.
 		bool SynchronousMTGS = false;
-		bool FrameLimitEnable = true;
 
 		VsyncMode VsyncEnable = VsyncMode::Off;
 
-		float LimitScalar = 1.0f;
 		float FramerateNTSC = DEFAULT_FRAME_RATE_NTSC;
 		float FrameratePAL = DEFAULT_FRAME_RATE_PAL;
 
@@ -1138,24 +1134,24 @@ struct Pcsx2Config
 	};
 
 	// ------------------------------------------------------------------------
-	struct FramerateOptions
+	struct EmulationSpeedOptions
 	{
+		BITFIELD32()
+		bool FrameLimitEnable : 1;
+		bool SyncToHostRefreshRate : 1;
+		BITFIELD_END
+
 		float NominalScalar{1.0f};
 		float TurboScalar{2.0f};
 		float SlomoScalar{0.5f};
 
+		EmulationSpeedOptions();
+
 		void LoadSave(SettingsWrapper& wrap);
 		void SanityCheck();
 
-		bool operator==(const FramerateOptions& right) const
-		{
-			return OpEqu(NominalScalar) && OpEqu(TurboScalar) && OpEqu(SlomoScalar);
-		}
-
-		bool operator!=(const FramerateOptions& right) const
-		{
-			return !this->operator==(right);
-		}
+		bool operator==(const EmulationSpeedOptions& right) const;
+		bool operator!=(const EmulationSpeedOptions& right) const;
 	};
 
 	// ------------------------------------------------------------------------
@@ -1245,7 +1241,6 @@ struct Pcsx2Config
 
 	// ------------------------------------------------------------------------
 
-#ifdef ENABLE_ACHIEVEMENTS
 	struct AchievementsOptions
 	{
 		BITFIELD32()
@@ -1276,7 +1271,6 @@ struct Pcsx2Config
 			return !this->operator==(right);
 		}
 	};
-#endif
 
 	// ------------------------------------------------------------------------
 
@@ -1321,7 +1315,7 @@ struct Pcsx2Config
 	GamefixOptions Gamefixes;
 	ProfilerOptions Profiler;
 	DebugOptions Debugger;
-	FramerateOptions Framerate;
+	EmulationSpeedOptions EmulationSpeed;
 	SPU2Options SPU2;
 	DEV9Options DEV9;
 	USBOptions USB;
@@ -1331,9 +1325,7 @@ struct Pcsx2Config
 
 	FilenameOptions BaseFilenames;
 
-#ifdef ENABLE_ACHIEVEMENTS
 	AchievementsOptions Achievements;
-#endif
 
 	// Memorycard options - first 2 are default slots, last 6 are multitap 1 and 2
 	// slots (3 each)
@@ -1347,10 +1339,10 @@ struct Pcsx2Config
 	std::string CurrentIRX;
 	std::string CurrentGameArgs;
 	AspectRatioType CurrentAspectRatio = AspectRatioType::RAuto4_3_3_2;
-	LimiterModeType LimiterMode = LimiterModeType::Nominal;
 
 	Pcsx2Config();
 	void LoadSave(SettingsWrapper& wrap);
+	void LoadSaveCore(SettingsWrapper& wrap);
 	void LoadSaveMemcards(SettingsWrapper& wrap);
 
 	/// Reloads options affected by patches.
@@ -1359,14 +1351,17 @@ struct Pcsx2Config
 	std::string FullpathToBios() const;
 	std::string FullpathToMcd(uint slot) const;
 
-	bool operator==(const Pcsx2Config& right) const;
-	bool operator!=(const Pcsx2Config& right) const
-	{
-		return !this->operator==(right);
-	}
+	bool operator==(const Pcsx2Config& right) const = delete;
+	bool operator!=(const Pcsx2Config& right) const = delete;
 
 	/// Copies runtime configuration settings (e.g. frame limiter state).
 	void CopyRuntimeConfig(Pcsx2Config& cfg);
+
+	/// Copies configuration from one file to another. Does not copy controller settings.
+	static void CopyConfiguration(SettingsInterface* dest_si, SettingsInterface& src_si);
+
+	/// Clears all core keys from the specified interface.
+	static void ClearConfiguration(SettingsInterface* dest_si);
 };
 
 extern Pcsx2Config EmuConfig;

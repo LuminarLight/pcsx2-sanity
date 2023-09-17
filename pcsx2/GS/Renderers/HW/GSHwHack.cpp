@@ -754,7 +754,7 @@ bool GSHwHack::GSC_BlueTongueGames(GSRendererHW& r, int& skip)
 		r.m_r.x = r.m_vt.m_min.p.x;
 		r.m_r.y = r.m_vt.m_min.p.y;
 		r.m_r.z = r.PCRTCDisplays.GetResolution().x;
-		r.m_r.w = r.m_vt.m_max.p.y;
+		r.m_r.w = r.PCRTCDisplays.GetResolution().y;
 
 		for (int vert = 32; vert < 40; vert+=2)
 		{
@@ -763,9 +763,9 @@ bool GSHwHack::GSC_BlueTongueGames(GSRendererHW& r, int& skip)
 			r.m_vertex.buff[vert].U = (vert * 16) << 4;
 			r.m_vertex.buff[vert].V = 0;
 			r.m_vertex.buff[vert+1].XYZ.X = context->XYOFFSET.OFX + ((((vert * 16) + 32) << 4) - 8);
-			r.m_vertex.buff[vert+1].XYZ.Y = context->XYOFFSET.OFY + 8184; //511.5
+			r.m_vertex.buff[vert+1].XYZ.Y = context->XYOFFSET.OFY + (r.PCRTCDisplays.GetResolution().y << 4) + 8;
 			r.m_vertex.buff[vert+1].U = ((vert * 16) + 32) << 4;
-			r.m_vertex.buff[vert+1].V = 512 << 4;
+			r.m_vertex.buff[vert+1].V = r.PCRTCDisplays.GetResolution().y << 4;
 		}
 
 		/*r.m_vertex.head = r.m_vertex.tail = r.m_vertex.next = 2;
@@ -831,8 +831,8 @@ bool GSHwHack::GSC_MetalGearSolid3(GSRendererHW& r, int& skip)
 	// For some reason, instead of being sensible and masking Z, they set up AFAIL instead.
 	if (!RZMSK)
 	{
-		u32 fm = 0, fm_mask = 0, zm = 0;
-		if (!r.m_cached_ctx.TEST.ATE || !r.TryAlphaTest(fm, fm_mask, zm) || zm == 0)
+		u32 fm = 0, zm = 0;
+		if (!r.m_cached_ctx.TEST.ATE || !r.TryAlphaTest(fm, zm) || zm == 0)
 			return false;
 	}
 
@@ -887,6 +887,23 @@ bool GSHwHack::GSC_BigMuthaTruckers(GSRendererHW& r, int& skip)
 	}
 
 	return true;
+}
+
+bool GSHwHack::GSC_HitmanBloodMoney(GSRendererHW& r, int& skip)
+{
+	// The game does a stupid thing where it backs up the last 2 pages of the framebuffer with shuffles, uploads a CT32 texture to it
+	// then copies the RGB back (keeping the new alpha only). It's pretty gross, I have no idea why they didn't just upload a new alpha.
+	// This is a real pain to emulate with the current state of things, so let's just clear the dirty area from the upload and pretend it wasn't there.
+	
+	// Catch the first draw of the copy back.
+	if (RFBP > 0 && RTPSM == PSMT8H && RFPSM == PSMCT32)
+	{
+		GSTextureCache::Target* target = g_texture_cache->FindOverlappingTarget(RFBP, RFBP + 1);
+		if (target)
+			target->m_dirty.clear();
+	}
+
+	return false;
 }
 
 bool GSHwHack::OI_PointListPalette(GSRendererHW& r, GSTexture* rt, GSTexture* ds, GSTextureCache::Source* t)
@@ -959,22 +976,6 @@ bool GSHwHack::OI_DBZBTGames(GSRendererHW& r, GSTexture* rt, GSTexture* ds, GSTe
 	return false; // Skip current draw
 }
 
-bool GSHwHack::OI_FFX(GSRendererHW& r, GSTexture* rt, GSTexture* ds, GSTextureCache::Source* t)
-{
-	const u32 FBP = RFRAME.Block();
-	const u32 ZBP = RZBUF.Block();
-	const u32 TBP = RTEX0.TBP0;
-
-	if (ds && (FBP == 0x00d00 || FBP == 0x00000) && ZBP == 0x02100 && RPRIM->TME && TBP == 0x01a00 && RTEX0.PSM == PSMCT16S)
-	{
-		// random battle transition (z buffer written directly, clear it now)
-		GL_INS("OI_FFX ZB clear");
-		g_gs_device->ClearDepth(ds, 0.0f);
-	}
-
-	return true;
-}
-
 bool GSHwHack::OI_RozenMaidenGebetGarden(GSRendererHW& r, GSTexture* rt, GSTexture* ds, GSTextureCache::Source* t)
 {
 	if (!RPRIM->TME)
@@ -996,6 +997,7 @@ bool GSHwHack::OI_RozenMaidenGebetGarden(GSRendererHW& r, GSTexture* rt, GSTextu
 			{
 				GL_INS("OI_RozenMaidenGebetGarden FB clear");
 				g_gs_device->ClearRenderTarget(tmp_rt->m_texture, 0);
+				tmp_rt->UpdateDrawn(tmp_rt->m_valid);
 				tmp_rt->m_alpha_max = 0;
 				tmp_rt->m_alpha_min = 0;
 			}
@@ -1061,9 +1063,10 @@ bool GSHwHack::OI_SonicUnleashed(GSRendererHW& r, GSTexture* rt, GSTexture* ds, 
 		{
 			GSVector2i new_size = GSVector2i(std::max(rt_again->m_unscaled_size.x, src->m_unscaled_size.x),
 									std::max(rt_again->m_unscaled_size.y, src->m_unscaled_size.y));
-			rt_again->ResizeTexture(new_size.x,	new_size.y);
+			rt_again->ResizeTexture(new_size.x, new_size.y);
 			rt = rt_again->m_texture;
 			rt_size = new_size;
+			rt_again->UpdateDrawn(GSVector4i::loadh(rt_size));
 		}
 	}
 
@@ -1283,7 +1286,7 @@ static bool GetMoveTargetPair(GSRendererHW& r, GSTextureCache::Target** src, GIF
 		GSLocalMemory::m_psm[src_desc.PSM].depth ? GSTextureCache::DepthStencil : GSTextureCache::RenderTarget;
 	GSTextureCache::Target* tsrc =
 		g_texture_cache->LookupTarget(src_desc, GSVector2i(1, 1), r.GetTextureScaleFactor(), src_type);
-	if (!src)
+	if (!tsrc)
 		return false;
 
 	// The target might not.
@@ -1318,6 +1321,9 @@ static bool GetMoveTargetPair(GSRendererHW& r, GSTextureCache::Target** src, GIF
 
 	*src = tsrc;
 	*dst = tdst;
+
+	tdst->UpdateDrawn(tdst->m_valid);
+
 	return true;
 }
 
@@ -1453,6 +1459,7 @@ const GSHwHack::Entry<GSRendererHW::GSC_Ptr> GSHwHack::s_get_skip_count_function
 	CRC_F(GSC_NFSUndercover),
 	CRC_F(GSC_PolyphonyDigitalGames),
 	CRC_F(GSC_MetalGearSolid3),
+	CRC_F(GSC_HitmanBloodMoney),
 
 	// Channel Effect
 	CRC_F(GSC_GiTS),
@@ -1478,7 +1485,6 @@ const GSHwHack::Entry<GSRendererHW::GSC_Ptr> GSHwHack::s_get_skip_count_function
 const GSHwHack::Entry<GSRendererHW::OI_Ptr> GSHwHack::s_before_draw_functions[] = {
 	CRC_F(OI_PointListPalette),
 	CRC_F(OI_DBZBTGames),
-	CRC_F(OI_FFX),
 	CRC_F(OI_RozenMaidenGebetGarden),
 	CRC_F(OI_SonicUnleashed),
 	CRC_F(OI_ArTonelico2),
