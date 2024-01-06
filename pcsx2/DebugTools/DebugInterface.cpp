@@ -1,19 +1,5 @@
-/*  PCSX2 - PS2 Emulator for PCs
- *  Copyright (C) 2002-2021  PCSX2 Dev Team
- *
- *  PCSX2 is free software: you can redistribute it and/or modify it under the terms
- *  of the GNU Lesser General Public License as published by the Free Software Found-
- *  ation, either version 3 of the License, or (at your option) any later version.
- *
- *  PCSX2 is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
- *  without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
- *  PURPOSE.  See the GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License along with PCSX2.
- *  If not, see <http://www.gnu.org/licenses/>.
- */
-
-#include "PrecompiledHeader.h"
+// SPDX-FileCopyrightText: 2002-2023 PCSX2 Dev Team
+// SPDX-License-Identifier: LGPL-3.0+
 
 #include "DebugInterface.h"
 #include "Memory.h"
@@ -31,12 +17,13 @@
 
 #include "common/StringUtil.h"
 
+#ifdef __clang__
+// TODO: The sprintf() usage here needs to be rewritten...
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+#endif
+
 R5900DebugInterface r5900Debug;
 R3000DebugInterface r3000Debug;
-
-#ifdef _WIN32
-#define strcasecmp stricmp
-#endif
 
 enum ReferenceIndexType
 {
@@ -67,46 +54,46 @@ public:
 		for (int i = 0; i < 32; i++)
 		{
 			char reg[8];
-			sprintf(reg, "r%d", i);
+			std::snprintf(reg, std::size(reg), "r%d", i);
 
-			if (strcasecmp(str, reg) == 0 || strcasecmp(str, cpu->getRegisterName(0, i)) == 0)
+			if (StringUtil::Strcasecmp(str, reg) == 0 || StringUtil::Strcasecmp(str, cpu->getRegisterName(0, i)) == 0)
 			{
 				referenceIndex = i;
 				return true;
 			}
 		}
 
-		if (strcasecmp(str, "pc") == 0)
+		if (StringUtil::Strcasecmp(str, "pc") == 0)
 		{
 			referenceIndex = REF_INDEX_PC;
 			return true;
 		}
 
-		if (strcasecmp(str, "hi") == 0)
+		if (StringUtil::Strcasecmp(str, "hi") == 0)
 		{
 			referenceIndex = REF_INDEX_HI;
 			return true;
 		}
 
-		if (strcasecmp(str, "lo") == 0)
+		if (StringUtil::Strcasecmp(str, "lo") == 0)
 		{
 			referenceIndex = REF_INDEX_LO;
 			return true;
 		}
 
-		if (strcasecmp(str, "target") == 0)
+		if (StringUtil::Strcasecmp(str, "target") == 0)
 		{
 			referenceIndex = REF_INDEX_OPTARGET;
 			return true;
 		}
 
-		if (strcasecmp(str, "load") == 0)
+		if (StringUtil::Strcasecmp(str, "load") == 0)
 		{
 			referenceIndex = REF_INDEX_OPLOAD;
 			return true;
 		}
 
-		if (strcasecmp(str, "store") == 0)
+		if (StringUtil::Strcasecmp(str, "store") == 0)
 		{
 			referenceIndex = REF_INDEX_OPSTORE;
 			return true;
@@ -998,14 +985,22 @@ std::string R3000DebugInterface::disasm(u32 address, bool simplify)
 
 bool R3000DebugInterface::isValidAddress(u32 addr)
 {
-	if (addr >= 0x10000000 && addr < 0x10010000)
+	if (addr >= 0x1D000000 && addr < 0x1E000000)
+	{
 		return true;
-	if (addr >= 0x12000000 && addr < 0x12001100)
-		return true;
-	if (addr >= 0x70000000 && addr < 0x70004000)
-		return true;
+	}
 
-	return !(addr & 0x40000000) && vtlb_GetPhyPtr(addr & 0x1FFFFFFF) != NULL;
+	if (addr >= 0x1F400000 && addr < 0x1FA00000)
+	{
+		return true;
+	}
+
+	if (addr < 0x200000)
+	{
+		return true;
+	}
+
+	return false;
 }
 
 u32 R3000DebugInterface::getCycles()

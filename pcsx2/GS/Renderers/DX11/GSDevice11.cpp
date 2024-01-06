@@ -1,19 +1,6 @@
-/*  PCSX2 - PS2 Emulator for PCs
- *  Copyright (C) 2002-2023 PCSX2 Dev Team
- *
- *  PCSX2 is free software: you can redistribute it and/or modify it under the terms
- *  of the GNU Lesser General Public License as published by the Free Software Found-
- *  ation, either version 3 of the License, or (at your option) any later version.
- *
- *  PCSX2 is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
- *  without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
- *  PURPOSE.  See the GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License along with PCSX2.
- *  If not, see <http://www.gnu.org/licenses/>.
- */
+// SPDX-FileCopyrightText: 2002-2023 PCSX2 Dev Team
+// SPDX-License-Identifier: LGPL-3.0+
 
-#include "PrecompiledHeader.h"
 #include "GS.h"
 #include "GSDevice11.h"
 #include "GS/Renderers/DX11/D3D.h"
@@ -73,6 +60,21 @@ GSDevice11::GSDevice11()
 
 GSDevice11::~GSDevice11() = default;
 
+void GSDevice11::SetD3DDebugObjectName(ID3D11DeviceChild* obj, std::string_view name)
+{
+#ifdef PCSX2_DEVBUILD
+	// WKPDID_D3DDebugObjectName
+	static constexpr GUID guid = {0x429b8c22, 0x9188, 0x4b0c, {0x87, 0x42, 0xac, 0xb0, 0xbf, 0x85, 0xc2, 0x00}};
+
+	UINT existing_data_size;
+	HRESULT hr = obj->GetPrivateData(guid, &existing_data_size, nullptr);
+	if (SUCCEEDED(hr) && existing_data_size > 0)
+		return;
+
+	obj->SetPrivateData(guid, static_cast<UINT>(name.length()), name.data());
+#endif
+}
+
 RenderAPI GSDevice11::GetRenderAPI() const
 {
 	return RenderAPI::D3D11;
@@ -130,6 +132,8 @@ bool GSDevice11::Create()
 			D3D11_MESSAGE_ID hide[] = {
 				D3D11_MESSAGE_ID_DEVICE_OMSETRENDERTARGETS_HAZARD,
 				D3D11_MESSAGE_ID_DEVICE_PSSETSHADERRESOURCES_HAZARD,
+				D3D11_MESSAGE_ID_DEVICE_DRAW_RENDERTARGETVIEW_NOT_SET,
+				D3D11_MESSAGE_ID_QUERY_END_ABANDONING_PREVIOUS_RESULTS,
 			};
 
 			D3D11_INFO_QUEUE_FILTER filter = {};
@@ -179,7 +183,7 @@ bool GSDevice11::Create()
 
 	SetFeatures(dxgi_adapter.get());
 
-	std::optional<std::string> shader = Host::ReadResourceFileToString("shaders/dx11/tfx.fx");
+	std::optional<std::string> shader = ReadShaderSource("shaders/dx11/tfx.fx");
 	if (!shader.has_value())
 		return false;
 	m_tfx_source = std::move(*shader);
@@ -193,7 +197,7 @@ bool GSDevice11::Create()
 		{"COLOR", 0, DXGI_FORMAT_R8G8B8A8_UNORM, 0, 28, D3D11_INPUT_PER_VERTEX_DATA, 0},
 	};
 
-	std::optional<std::string> convert_hlsl = Host::ReadResourceFileToString("shaders/dx11/convert.fx");
+	const std::optional<std::string> convert_hlsl = ReadShaderSource("shaders/dx11/convert.fx");
 	if (!convert_hlsl.has_value())
 		return false;
 	if (!m_shader_cache.GetVertexShaderAndInputLayout(m_dev.get(), m_convert.vs.put(), m_convert.il.put(),
@@ -209,7 +213,7 @@ bool GSDevice11::Create()
 			return false;
 	}
 
-	shader = Host::ReadResourceFileToString("shaders/dx11/present.fx");
+	shader = ReadShaderSource("shaders/dx11/present.fx");
 	if (!shader.has_value())
 		return false;
 	if (!m_shader_cache.GetVertexShaderAndInputLayout(m_dev.get(), m_present.vs.put(), m_present.il.put(),
@@ -261,7 +265,7 @@ bool GSDevice11::Create()
 
 	m_dev->CreateBuffer(&bd, nullptr, m_merge.cb.put());
 
-	shader = Host::ReadResourceFileToString("shaders/dx11/merge.fx");
+	shader = ReadShaderSource("shaders/dx11/merge.fx");
 	if (!shader.has_value())
 		return false;
 
@@ -296,7 +300,7 @@ bool GSDevice11::Create()
 
 	m_dev->CreateBuffer(&bd, nullptr, m_interlace.cb.put());
 
-	shader = Host::ReadResourceFileToString("shaders/dx11/interlace.fx");
+	shader = ReadShaderSource("shaders/dx11/interlace.fx");
 	if (!shader.has_value())
 		return false;
 	for (size_t i = 0; i < std::size(m_interlace.ps); i++)
@@ -316,7 +320,7 @@ bool GSDevice11::Create()
 
 	m_dev->CreateBuffer(&bd, nullptr, m_shadeboost.cb.put());
 
-	shader = Host::ReadResourceFileToString("shaders/dx11/shadeboost.fx");
+	shader = ReadShaderSource("shaders/dx11/shadeboost.fx");
 	if (!shader.has_value())
 		return false;
 	m_shadeboost.ps = m_shader_cache.GetPixelShader(m_dev.get(), *shader, nullptr, "ps_main");
@@ -324,6 +328,7 @@ bool GSDevice11::Create()
 		return false;
 
 	// Vertex/Index Buffer
+
 	bd = {};
 	bd.ByteWidth = VERTEX_BUFFER_SIZE;
 	bd.Usage = D3D11_USAGE_DYNAMIC;
@@ -383,7 +388,7 @@ bool GSDevice11::Create()
 		}
 	}
 
-	//
+	// rasterizer
 
 	memset(&rd, 0, sizeof(rd));
 
@@ -401,7 +406,7 @@ bool GSDevice11::Create()
 	m_dev->CreateRasterizerState(&rd, m_rs.put());
 	m_ctx->RSSetState(m_rs.get());
 
-	//
+	// sampler
 
 	memset(&sd, 0, sizeof(sd));
 
@@ -420,11 +425,42 @@ bool GSDevice11::Create()
 
 	m_dev->CreateSamplerState(&sd, m_convert.pt.put());
 
-	//
+	// constant buffer
 
-	CreateTextureFX();
+	memset(&bd, 0, sizeof(bd));
 
-	//
+	bd.ByteWidth = sizeof(GSHWDrawConfig::VSConstantBuffer);
+	bd.Usage = D3D11_USAGE_DEFAULT;
+	bd.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+
+	if (FAILED(m_dev->CreateBuffer(&bd, nullptr, m_vs_cb.put())))
+	{
+		Console.Error("Failed to create vertex shader constant buffer.");
+		return false;
+	}
+
+	memset(&bd, 0, sizeof(bd));
+
+	bd.ByteWidth = sizeof(GSHWDrawConfig::PSConstantBuffer);
+	bd.Usage = D3D11_USAGE_DEFAULT;
+	bd.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+
+	if (FAILED(m_dev->CreateBuffer(&bd, nullptr, m_ps_cb.put())))
+	{
+		Console.Error("Failed to create pixel shader constant buffer.");
+		return false;
+	}
+
+	// create layout
+
+	{
+		const VSSelector sel;
+		const GSHWDrawConfig::VSConstantBuffer cb;
+
+		SetupVS(sel, &cb);
+	}
+
+	// depth stencil
 
 	memset(&dsd, 0, sizeof(dsd));
 
@@ -443,11 +479,15 @@ bool GSDevice11::Create()
 
 	m_dev->CreateDepthStencilState(&dsd, m_date.dss.put());
 
-	D3D11_BLEND_DESC blend;
+	// blend
 
-	memset(&blend, 0, sizeof(blend));
+	{
+		D3D11_BLEND_DESC blend;
 
-	m_dev->CreateBlendState(&blend, m_date.bs.put());
+		memset(&blend, 0, sizeof(blend));
+
+		m_dev->CreateBlendState(&blend, m_date.bs.put());
+	}
 
 	for (size_t i = 0; i < std::size(m_date.primid_init_ps); i++)
 	{
@@ -1037,7 +1077,7 @@ void GSDevice11::DrawIndexedPrimitive()
 
 void GSDevice11::DrawIndexedPrimitive(int offset, int count)
 {
-	ASSERT(offset + count <= (int)m_index.count);
+	pxAssert(offset + count <= (int)m_index.count);
 	g_perfmon.Put(GSPerfMon::DrawCalls, 1);
 	PSUpdateShaderState();
 	m_ctx->DrawIndexed(count, m_index.start + offset, m_vertex.start);
@@ -1529,7 +1569,7 @@ void GSDevice11::DoFXAA(GSTexture* sTex, GSTexture* dTex)
 
 	if (!m_fxaa_ps)
 	{
-		std::optional<std::string> shader = Host::ReadResourceFileToString("shaders/common/fxaa.fx");
+		const std::optional<std::string> shader = ReadShaderSource("shaders/common/fxaa.fx");
 		if (!shader.has_value())
 		{
 			Console.Error("FXAA shader is missing");
@@ -1558,6 +1598,284 @@ void GSDevice11::DoShadeBoost(GSTexture* sTex, GSTexture* dTex, const float para
 	StretchRect(sTex, sRect, dTex, dRect, m_shadeboost.ps.get(), m_shadeboost.cb.get(), false);
 }
 
+void GSDevice11::SetupVS(VSSelector sel, const GSHWDrawConfig::VSConstantBuffer* cb)
+{
+	auto i = std::as_const(m_vs).find(sel.key);
+
+	if (i == m_vs.end())
+	{
+		ShaderMacro sm;
+
+		sm.AddMacro("VERTEX_SHADER", 1);
+		sm.AddMacro("VS_TME", sel.tme);
+		sm.AddMacro("VS_FST", sel.fst);
+		sm.AddMacro("VS_IIP", sel.iip);
+		sm.AddMacro("VS_EXPAND", static_cast<int>(sel.expand));
+
+		static constexpr const D3D11_INPUT_ELEMENT_DESC layout[] =
+			{
+				{"TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0},
+				{"COLOR", 0, DXGI_FORMAT_R8G8B8A8_UINT, 0, 8, D3D11_INPUT_PER_VERTEX_DATA, 0},
+				{"TEXCOORD", 1, DXGI_FORMAT_R32_FLOAT, 0, 12, D3D11_INPUT_PER_VERTEX_DATA, 0},
+				{"POSITION", 0, DXGI_FORMAT_R16G16_UINT, 0, 16, D3D11_INPUT_PER_VERTEX_DATA, 0},
+				{"POSITION", 1, DXGI_FORMAT_R32_UINT, 0, 20, D3D11_INPUT_PER_VERTEX_DATA, 0},
+				{"TEXCOORD", 2, DXGI_FORMAT_R16G16_UINT, 0, 24, D3D11_INPUT_PER_VERTEX_DATA, 0},
+				{"COLOR", 1, DXGI_FORMAT_R8G8B8A8_UNORM, 0, 28, D3D11_INPUT_PER_VERTEX_DATA, 0},
+			};
+
+		GSVertexShader11 vs;
+		if (sel.expand == GSHWDrawConfig::VSExpand::None)
+		{
+			m_shader_cache.GetVertexShaderAndInputLayout(m_dev.get(), vs.vs.put(), vs.il.put(), layout,
+				std::size(layout), m_tfx_source, sm.GetPtr(), "vs_main");
+		}
+		else
+		{
+			vs.vs = m_shader_cache.GetVertexShader(m_dev.get(), m_tfx_source, sm.GetPtr(), "vs_main_expand");
+		}
+
+		i = m_vs.try_emplace(sel.key, std::move(vs)).first;
+	}
+
+	if (m_vs_cb_cache.Update(*cb))
+	{
+		m_ctx->UpdateSubresource(m_vs_cb.get(), 0, NULL, cb, 0, 0);
+	}
+
+	VSSetShader(i->second.vs.get(), m_vs_cb.get());
+
+	IASetInputLayout(i->second.il.get());
+}
+
+void GSDevice11::SetupPS(const PSSelector& sel, const GSHWDrawConfig::PSConstantBuffer* cb, PSSamplerSelector ssel)
+{
+	auto i = std::as_const(m_ps).find(sel);
+
+	if (i == m_ps.end())
+	{
+		ShaderMacro sm;
+
+		sm.AddMacro("PIXEL_SHADER", 1);
+		sm.AddMacro("PS_FST", sel.fst);
+		sm.AddMacro("PS_WMS", sel.wms);
+		sm.AddMacro("PS_WMT", sel.wmt);
+		sm.AddMacro("PS_ADJS", sel.adjs);
+		sm.AddMacro("PS_ADJT", sel.adjt);
+		sm.AddMacro("PS_AEM_FMT", sel.aem_fmt);
+		sm.AddMacro("PS_AEM", sel.aem);
+		sm.AddMacro("PS_TFX", sel.tfx);
+		sm.AddMacro("PS_TCC", sel.tcc);
+		sm.AddMacro("PS_DATE", sel.date);
+		sm.AddMacro("PS_ATST", sel.atst);
+		sm.AddMacro("PS_FOG", sel.fog);
+		sm.AddMacro("PS_IIP", sel.iip);
+		sm.AddMacro("PS_BLEND_HW", sel.blend_hw);
+		sm.AddMacro("PS_A_MASKED", sel.a_masked);
+		sm.AddMacro("PS_FBA", sel.fba);
+		sm.AddMacro("PS_FBMASK", sel.fbmask);
+		sm.AddMacro("PS_LTF", sel.ltf);
+		sm.AddMacro("PS_TCOFFSETHACK", sel.tcoffsethack);
+		sm.AddMacro("PS_POINT_SAMPLER", sel.point_sampler);
+		sm.AddMacro("PS_REGION_RECT", sel.region_rect);
+		sm.AddMacro("PS_SHUFFLE", sel.shuffle);
+		sm.AddMacro("PS_SHUFFLE_SAME", sel.shuffle_same);
+		sm.AddMacro("PS_READ_BA", sel.read_ba);
+		sm.AddMacro("PS_READ16_SRC", sel.real16src);
+		sm.AddMacro("PS_CHANNEL_FETCH", sel.channel);
+		sm.AddMacro("PS_TALES_OF_ABYSS_HLE", sel.tales_of_abyss_hle);
+		sm.AddMacro("PS_URBAN_CHAOS_HLE", sel.urban_chaos_hle);
+		sm.AddMacro("PS_DST_FMT", sel.dst_fmt);
+		sm.AddMacro("PS_DEPTH_FMT", sel.depth_fmt);
+		sm.AddMacro("PS_PAL_FMT", sel.pal_fmt);
+		sm.AddMacro("PS_HDR", sel.hdr);
+		sm.AddMacro("PS_COLCLIP", sel.colclip);
+		sm.AddMacro("PS_BLEND_A", sel.blend_a);
+		sm.AddMacro("PS_BLEND_B", sel.blend_b);
+		sm.AddMacro("PS_BLEND_C", sel.blend_c);
+		sm.AddMacro("PS_BLEND_D", sel.blend_d);
+		sm.AddMacro("PS_BLEND_MIX", sel.blend_mix);
+		sm.AddMacro("PS_ROUND_INV", sel.round_inv);
+		sm.AddMacro("PS_FIXED_ONE_A", sel.fixed_one_a);
+		sm.AddMacro("PS_PABE", sel.pabe);
+		sm.AddMacro("PS_DITHER", sel.dither);
+		sm.AddMacro("PS_ZCLAMP", sel.zclamp);
+		sm.AddMacro("PS_SCANMSK", sel.scanmsk);
+		sm.AddMacro("PS_AUTOMATIC_LOD", sel.automatic_lod);
+		sm.AddMacro("PS_MANUAL_LOD", sel.manual_lod);
+		sm.AddMacro("PS_TEX_IS_FB", sel.tex_is_fb);
+		sm.AddMacro("PS_NO_COLOR", sel.no_color);
+		sm.AddMacro("PS_NO_COLOR1", sel.no_color1);
+		sm.AddMacro("PS_NO_ABLEND", sel.no_ablend);
+		sm.AddMacro("PS_ONLY_ALPHA", sel.only_alpha);
+
+		wil::com_ptr_nothrow<ID3D11PixelShader> ps = m_shader_cache.GetPixelShader(m_dev.get(), m_tfx_source, sm.GetPtr(), "ps_main");
+		i = m_ps.try_emplace(sel, std::move(ps)).first;
+	}
+
+	if (cb && m_ps_cb_cache.Update(*cb))
+	{
+		m_ctx->UpdateSubresource(m_ps_cb.get(), 0, NULL, cb, 0, 0);
+	}
+
+	wil::com_ptr_nothrow<ID3D11SamplerState> ss0;
+
+	if (sel.tfx != 4)
+	{
+		if (sel.pal_fmt || sel.wms >= 3 || sel.wmt >= 3)
+		{
+			pxAssert(ssel.biln == 0);
+		}
+
+		auto i = std::as_const(m_ps_ss).find(ssel.key);
+
+		if (i != m_ps_ss.end())
+		{
+			ss0 = i->second;
+		}
+		else
+		{
+			D3D11_SAMPLER_DESC sd = {};
+
+			const int anisotropy = GSConfig.MaxAnisotropy;
+			if (anisotropy > 1 && ssel.aniso)
+			{
+				sd.Filter = D3D11_FILTER_ANISOTROPIC;
+			}
+			else
+			{
+				static constexpr std::array<D3D11_FILTER, 8> filters = {{
+					D3D11_FILTER_MIN_MAG_MIP_POINT, // 000 / min=point,mag=point,mip=point
+					D3D11_FILTER_MIN_LINEAR_MAG_MIP_POINT, // 001 / min=linear,mag=point,mip=point
+					D3D11_FILTER_MIN_POINT_MAG_LINEAR_MIP_POINT, // 010 / min=point,mag=linear,mip=point
+					D3D11_FILTER_MIN_MAG_LINEAR_MIP_POINT, // 011 / min=linear,mag=linear,mip=point
+					D3D11_FILTER_MIN_MAG_POINT_MIP_LINEAR, // 100 / min=point,mag=point,mip=linear
+					D3D11_FILTER_MIN_LINEAR_MAG_POINT_MIP_LINEAR, // 101 / min=linear,mag=point,mip=linear
+					D3D11_FILTER_MIN_POINT_MAG_MIP_LINEAR, // 110 / min=point,mag=linear,mip=linear
+					D3D11_FILTER_MIN_MAG_MIP_LINEAR, // 111 / min=linear,mag=linear,mip=linear
+				}};
+
+				const u8 index = (static_cast<u8>(ssel.IsMipFilterLinear()) << 2) |
+								 (static_cast<u8>(ssel.IsMagFilterLinear()) << 1) |
+								 static_cast<u8>(ssel.IsMinFilterLinear());
+				sd.Filter = filters[index];
+			}
+
+			sd.AddressU = ssel.tau ? D3D11_TEXTURE_ADDRESS_WRAP : D3D11_TEXTURE_ADDRESS_CLAMP;
+			sd.AddressV = ssel.tav ? D3D11_TEXTURE_ADDRESS_WRAP : D3D11_TEXTURE_ADDRESS_CLAMP;
+			sd.AddressW = D3D11_TEXTURE_ADDRESS_CLAMP;
+			sd.MinLOD = 0.0f;
+			sd.MaxLOD = (ssel.lodclamp || !ssel.UseMipmapFiltering()) ? 0.25f : FLT_MAX;
+			sd.MaxAnisotropy = std::clamp(anisotropy, 1, 16);
+			sd.ComparisonFunc = D3D11_COMPARISON_NEVER;
+
+			m_dev->CreateSamplerState(&sd, &ss0);
+
+			m_ps_ss[ssel.key] = ss0;
+		}
+	}
+
+	PSSetSamplerState(ss0.get());
+
+	PSSetShader(i->second.get(), m_ps_cb.get());
+}
+
+void GSDevice11::SetupOM(OMDepthStencilSelector dssel, OMBlendSelector bsel, u8 afix)
+{
+	auto i = std::as_const(m_om_dss).find(dssel.key);
+
+	if (i == m_om_dss.end())
+	{
+		D3D11_DEPTH_STENCIL_DESC dsd;
+
+		memset(&dsd, 0, sizeof(dsd));
+
+		if (dssel.date)
+		{
+			dsd.StencilEnable = true;
+			dsd.StencilReadMask = 1;
+			dsd.StencilWriteMask = 1;
+			dsd.FrontFace.StencilFunc = D3D11_COMPARISON_EQUAL;
+			dsd.FrontFace.StencilPassOp = dssel.date_one ? D3D11_STENCIL_OP_ZERO : D3D11_STENCIL_OP_KEEP;
+			dsd.FrontFace.StencilFailOp = D3D11_STENCIL_OP_KEEP;
+			dsd.FrontFace.StencilDepthFailOp = D3D11_STENCIL_OP_KEEP;
+			dsd.BackFace.StencilFunc = D3D11_COMPARISON_EQUAL;
+			dsd.BackFace.StencilPassOp = dssel.date_one ? D3D11_STENCIL_OP_ZERO : D3D11_STENCIL_OP_KEEP;
+			dsd.BackFace.StencilFailOp = D3D11_STENCIL_OP_KEEP;
+			dsd.BackFace.StencilDepthFailOp = D3D11_STENCIL_OP_KEEP;
+		}
+
+		if (dssel.ztst != ZTST_ALWAYS || dssel.zwe)
+		{
+			static const D3D11_COMPARISON_FUNC ztst[] =
+			{
+					D3D11_COMPARISON_NEVER,
+					D3D11_COMPARISON_ALWAYS,
+					D3D11_COMPARISON_GREATER_EQUAL,
+					D3D11_COMPARISON_GREATER
+			};
+
+			dsd.DepthEnable = true;
+			dsd.DepthWriteMask = dssel.zwe ? D3D11_DEPTH_WRITE_MASK_ALL : D3D11_DEPTH_WRITE_MASK_ZERO;
+			dsd.DepthFunc = ztst[dssel.ztst];
+		}
+
+		wil::com_ptr_nothrow<ID3D11DepthStencilState> dss;
+		m_dev->CreateDepthStencilState(&dsd, dss.put());
+
+		i = m_om_dss.try_emplace(dssel.key, std::move(dss)).first;
+	}
+
+	OMSetDepthStencilState(i->second.get(), 1);
+
+	auto j = std::as_const(m_om_bs).find(bsel);
+
+	if (j == m_om_bs.end())
+	{
+		D3D11_BLEND_DESC bd;
+
+		memset(&bd, 0, sizeof(bd));
+
+		if (bsel.blend_enable && (bsel.wrgba & 0x7))
+		{
+			// clang-format off
+			static constexpr std::array<D3D11_BLEND, 16> s_d3d11_blend_factors = { {
+				D3D11_BLEND_SRC_COLOR, D3D11_BLEND_INV_SRC_COLOR, D3D11_BLEND_DEST_COLOR, D3D11_BLEND_INV_DEST_COLOR,
+				D3D11_BLEND_SRC1_COLOR, D3D11_BLEND_INV_SRC1_COLOR, D3D11_BLEND_SRC_ALPHA, D3D11_BLEND_INV_SRC_ALPHA,
+				D3D11_BLEND_DEST_ALPHA, D3D11_BLEND_INV_DEST_ALPHA, D3D11_BLEND_SRC1_ALPHA, D3D11_BLEND_INV_SRC1_ALPHA,
+				D3D11_BLEND_BLEND_FACTOR, D3D11_BLEND_INV_BLEND_FACTOR, D3D11_BLEND_ONE, D3D11_BLEND_ZERO
+			} };
+			static constexpr std::array<D3D11_BLEND_OP, 4> s_d3d11_blend_ops = { {
+				D3D11_BLEND_OP_ADD, D3D11_BLEND_OP_SUBTRACT, D3D11_BLEND_OP_REV_SUBTRACT, D3D11_BLEND_OP_MIN
+			} };
+			// clang-format on
+
+			bd.RenderTarget[0].BlendEnable = TRUE;
+			bd.RenderTarget[0].BlendOp = s_d3d11_blend_ops[bsel.blend_op];
+			bd.RenderTarget[0].SrcBlend = s_d3d11_blend_factors[bsel.blend_src_factor];
+			bd.RenderTarget[0].DestBlend = s_d3d11_blend_factors[bsel.blend_dst_factor];
+			bd.RenderTarget[0].BlendOpAlpha = D3D11_BLEND_OP_ADD;
+			bd.RenderTarget[0].SrcBlendAlpha = D3D11_BLEND_ONE;
+			bd.RenderTarget[0].DestBlendAlpha = D3D11_BLEND_ZERO;
+		}
+
+		if (bsel.wr)
+			bd.RenderTarget[0].RenderTargetWriteMask |= D3D11_COLOR_WRITE_ENABLE_RED;
+		if (bsel.wg)
+			bd.RenderTarget[0].RenderTargetWriteMask |= D3D11_COLOR_WRITE_ENABLE_GREEN;
+		if (bsel.wb)
+			bd.RenderTarget[0].RenderTargetWriteMask |= D3D11_COLOR_WRITE_ENABLE_BLUE;
+		if (bsel.wa)
+			bd.RenderTarget[0].RenderTargetWriteMask |= D3D11_COLOR_WRITE_ENABLE_ALPHA;
+
+		wil::com_ptr_nothrow<ID3D11BlendState> bs;
+		m_dev->CreateBlendState(&bd, bs.put());
+
+		j = m_om_bs.try_emplace(bsel, std::move(bs)).first;
+	}
+
+	OMSetBlendState(j->second.get(), afix);
+}
+
 bool GSDevice11::CreateCASShaders()
 {
 	CD3D11_BUFFER_DESC desc(NUM_CAS_CONSTANTS * sizeof(u32), D3D11_BIND_CONSTANT_BUFFER, D3D11_USAGE_DEFAULT);
@@ -1565,7 +1883,7 @@ bool GSDevice11::CreateCASShaders()
 	if (FAILED(hr))
 		return false;
 
-	std::optional<std::string> cas_source(Host::ReadResourceFileToString("shaders/dx11/cas.hlsl"));
+	std::optional<std::string> cas_source = ReadShaderSource("shaders/dx11/cas.hlsl");
 	if (!cas_source.has_value() || !GetCASShaderSource(&cas_source.value()))
 		return false;
 
@@ -1613,7 +1931,7 @@ bool GSDevice11::CreateImGuiResources()
 {
 	HRESULT hr;
 
-	const std::optional<std::string> hlsl = Host::ReadResourceFileToString("shaders/dx11/imgui.fx");
+	const std::optional<std::string> hlsl = ReadShaderSource("shaders/dx11/imgui.fx");
 	if (!hlsl.has_value())
 	{
 		Console.Error("Failed to read imgui.fx");
@@ -1985,6 +2303,11 @@ void GSDevice11::PSSetSamplerState(ID3D11SamplerState* ss0)
 	m_state.ps_ss[0] = ss0;
 }
 
+void GSDevice11::ClearSamplerCache()
+{
+	m_ps_ss.clear();
+}
+
 void GSDevice11::PSSetShader(ID3D11PixelShader* ps, ID3D11Buffer* ps_cb)
 {
 	if (m_state.ps != ps)
@@ -2141,12 +2464,12 @@ static GSDevice11::OMBlendSelector convertSel(GSHWDrawConfig::ColorMaskSelector 
 /// Clears things we don't support that can be quietly disabled
 static void preprocessSel(GSDevice11::PSSelector& sel)
 {
-	ASSERT(sel.write_rg  == 0); // Not supported, shouldn't be sent
+	pxAssert(sel.write_rg  == 0); // Not supported, shouldn't be sent
 }
 
 void GSDevice11::RenderHW(GSHWDrawConfig& config)
 {
-	ASSERT(!config.require_full_barrier); // We always specify no support so it shouldn't request this
+	pxAssert(!config.require_full_barrier); // We always specify no support so it shouldn't request this
 	preprocessSel(config.ps);
 
 	GSVector2i rtsize = (config.rt ? config.rt : config.ds)->GetSize();

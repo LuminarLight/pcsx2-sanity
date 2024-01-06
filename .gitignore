@@ -56,6 +56,10 @@ oprofile_data/
 /UpgradeLog*.htm
 /.vscode*
 
+# KDevelop 4 Workspace Configuration Files
+*.kdev4
+/.kdev4*
+
 /bin/**/*.dll
 /bin/**/*.dmp
 /bin/**/*.exp
@@ -67,6 +71,7 @@ oprofile_data/
 /bin/bios
 /bin/cache
 /bin/cheats
+/bin/patches
 /bin/covers
 /bin/dumps
 /bin/gamesettings

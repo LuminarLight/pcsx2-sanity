@@ -1,26 +1,12 @@
-/*  PCSX2 - PS2 Emulator for PCs
- *  Copyright (C) 2002-2014  PCSX2 Dev Team
- *
- *  PCSX2 is free software: you can redistribute it and/or modify it under the terms
- *  of the GNU Lesser General Public License as published by the Free Software Found-
- *  ation, either version 3 of the License, or (at your option) any later version.
- *
- *  PCSX2 is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
- *  without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
- *  PURPOSE.  See the GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License along with PCSX2.
- *  If not, see <http://www.gnu.org/licenses/>.
- */
+// SPDX-FileCopyrightText: 2002-2023 PCSX2 Dev Team
+// SPDX-License-Identifier: LGPL-3.0+
 
-#include "PrecompiledHeader.h"
 #include "Breakpoints.h"
 #include "SymbolMap.h"
 #include "MIPSAnalyst.h"
 #include <cstdio>
 #include "R5900.h"
 #include "R3000A.h"
-#include "System.h"
 
 std::vector<BreakPoint> CBreakPoints::breakPoints_;
 u32 CBreakPoints::breakSkipFirstAtEE_ = 0;
@@ -30,6 +16,7 @@ u64 CBreakPoints::breakSkipFirstTicksIop_ = 0;
 std::vector<MemCheck> CBreakPoints::memChecks_;
 std::vector<MemCheck*> CBreakPoints::cleanupMemChecks_;
 bool CBreakPoints::breakpointTriggered_ = false;
+BreakPointCpu CBreakPoints::breakpointTriggeredCpu_;
 bool CBreakPoints::corePaused = false;
 std::function<void()> CBreakPoints::cb_bpUpdated_;
 
@@ -185,13 +172,13 @@ bool CBreakPoints::IsTempBreakPoint(BreakPointCpu cpu, u32 addr)
 	return bp != INVALID_BREAKPOINT;
 }
 
-void CBreakPoints::AddBreakPoint(BreakPointCpu cpu, u32 addr, bool temp)
+void CBreakPoints::AddBreakPoint(BreakPointCpu cpu, u32 addr, bool temp, bool enabled)
 {
 	size_t bp = FindBreakpoint(cpu, addr, true, temp);
 	if (bp == INVALID_BREAKPOINT)
 	{
 		BreakPoint pt;
-		pt.enabled = true;
+		pt.enabled = enabled;
 		pt.temporary = temp;
 		pt.addr = addr;
 		pt.cpu = cpu;
@@ -374,6 +361,14 @@ u32 CBreakPoints::CheckSkipFirst(BreakPointCpu cpu, u32 cmpPc)
 	else if (cpu == BREAKPOINT_IOP && breakSkipFirstTicksIop_ == r3000Debug.getCycles())
 		return breakSkipFirstAtIop_;
 	return 0;
+}
+
+void CBreakPoints::ClearSkipFirst()
+{
+	breakSkipFirstAtEE_ = 0;
+	breakSkipFirstTicksEE_ = 0;
+	breakSkipFirstAtIop_ = 0;
+	breakSkipFirstTicksIop_ = 0;
 }
 
 const std::vector<MemCheck> CBreakPoints::GetMemCheckRanges()

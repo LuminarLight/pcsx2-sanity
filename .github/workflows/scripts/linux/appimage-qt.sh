@@ -75,7 +75,6 @@ if [ ! -f "$APPIMAGETOOL" ]; then
 fi
 
 OUTDIR=$(realpath "./$APPDIRNAME")
-SCRIPTDIR=$(dirname "${BASH_SOURCE[0]}")
 rm -fr "$OUTDIR"
 
 # Why the nastyness? linuxdeploy strips our main binary, and there's no option to turn it off.
@@ -149,6 +148,17 @@ cp -a "$BUILDDIR/bin/translations" "$OUTDIR/usr/bin"
 echo "Generating AppStream metainfo..."
 mkdir -p "$OUTDIR/usr/share/metainfo"
 "$SCRIPTDIR/generate-metainfo.sh" "$OUTDIR/usr/share/metainfo/net.pcsx2.PCSX2.appdata.xml"
+
+# Copy in AppRun hooks.
+# Unfortunately linuxdeploy is a bit lame and doesn't let us provide our own AppRun hooks, instead
+# they have to come from plugins.. and screw writing one of those just to disable Wayland.
+echo "Copying AppRun hooks..."
+mkdir -p "$OUTDIR/apprun-hooks"
+for hookpath in "$SCRIPTDIR/apprun-hooks"/*; do
+	hookname=$(basename "$hookpath")
+	cp -v "$hookpath" "$OUTDIR/apprun-hooks/$hookname"
+	sed -i -e 's/exec /source "$this_dir"\/apprun-hooks\/"'"$hookname"'"\nexec /' "$OUTDIR/AppRun"
+done
 
 echo "Generating AppImage..."
 rm -f "$NAME.AppImage"

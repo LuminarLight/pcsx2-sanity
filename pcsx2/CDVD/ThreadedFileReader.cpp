@@ -1,19 +1,6 @@
-/*  PCSX2 - PS2 Emulator for PCs
- *  Copyright (C) 2002-2021 PCSX2 Dev Team
- *
- *  PCSX2 is free software: you can redistribute it and/or modify it under the terms
- *  of the GNU Lesser General Public License as published by the Free Software Found-
- *  ation, either version 3 of the License, or (at your option) any later version.
- *
- *  PCSX2 is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
- *  without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
- *  PURPOSE.  See the GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License along with PCSX2.
- *  If not, see <http://www.gnu.org/licenses/>.
- */
+// SPDX-FileCopyrightText: 2002-2023 PCSX2 Dev Team
+// SPDX-License-Identifier: LGPL-3.0+
 
-#include "PrecompiledHeader.h"
 #include "ThreadedFileReader.h"
 
 #include "common/Threading.h"
@@ -256,13 +243,13 @@ bool ThreadedFileReader::TryCachedRead(void*& buffer, u64& offset, u32& size, co
 	return allDone;
 }
 
-bool ThreadedFileReader::Open(std::string fileName)
+bool ThreadedFileReader::Open(std::string filename, Error* error)
 {
 	CancelAndWaitUntilStopped();
-	return Open2(std::move(fileName));
+	return Open2(std::move(filename), error);
 }
 
-int ThreadedFileReader::ReadSync(void* pBuffer, uint sector, uint count)
+int ThreadedFileReader::ReadSync(void* pBuffer, u32 sector, u32 count)
 {
 	u32 blocksize = InternalBlockSize();
 	u64 offset = (u64)sector * (u64)blocksize + m_dataoffset;
@@ -316,7 +303,7 @@ void ThreadedFileReader::CancelAndWaitUntilStopped(void)
 		m_condition.wait(lock);
 }
 
-void ThreadedFileReader::BeginRead(void* pBuffer, uint sector, uint count)
+void ThreadedFileReader::BeginRead(void* pBuffer, u32 sector, u32 count)
 {
 	s32 blocksize = InternalBlockSize();
 	u64 offset = (u64)sector * (u64)blocksize + m_dataoffset;
@@ -371,12 +358,12 @@ void ThreadedFileReader::Close(void)
 	Close2();
 }
 
-void ThreadedFileReader::SetBlockSize(uint bytes)
+void ThreadedFileReader::SetBlockSize(u32 bytes)
 {
 	m_blocksize = bytes;
 }
 
-void ThreadedFileReader::SetDataOffset(int bytes)
+void ThreadedFileReader::SetDataOffset(u32 bytes)
 {
 	m_dataoffset = bytes;
 }

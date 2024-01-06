@@ -1,19 +1,5 @@
-/*  PCSX2 - PS2 Emulator for PCs
- *  Copyright (C) 2002-2022  PCSX2 Dev Team
- *
- *  PCSX2 is free software: you can redistribute it and/or modify it under the terms
- *  of the GNU Lesser General Public License as published by the Free Software Found-
- *  ation, either version 3 of the License, or (at your option) any later version.
- *
- *  PCSX2 is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
- *  without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
- *  PURPOSE.  See the GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License along with PCSX2.
- *  If not, see <http://www.gnu.org/licenses/>.
- */
-
-#include "PrecompiledHeader.h"
+// SPDX-FileCopyrightText: 2002-2023 PCSX2 Dev Team
+// SPDX-License-Identifier: LGPL-3.0+
 
 #include "InputRecordingViewer.h"
 
@@ -57,7 +43,7 @@ QTableWidgetItem* InputRecordingViewer::createRowItem(std::tuple<bool, u8> butto
 
 void InputRecordingViewer::loadTable()
 {
-	static const auto headers = QStringList({"Left Analog", "Right Analog", "Cross", "Square", "Triangle", "Circle", "L1", "R1", "L2", "R2", "⬇️", "➡️", "⬆️", "⬅️", "L3", "R3", "Select", "Start"});
+	static const auto headers = QStringList({tr("Left Analog"), tr("Right Analog"), tr("Cross"), tr("Square"), tr("Triangle"), tr("Circle"), tr("L1"), tr("R1"), tr("L2"), tr("R2"), tr("D-Pad Down"), tr("D-Pad Right️"), tr("D-Pad Up️"), tr("D-Pad Left️"), tr("L3"), tr("R3"), tr("Select"), tr("Start")});
 	m_ui.tableWidget->setColumnCount(headers.length());
 	m_ui.tableWidget->setHorizontalHeaderLabels(headers);
 

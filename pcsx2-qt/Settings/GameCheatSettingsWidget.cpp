@@ -1,33 +1,19 @@
-/*  PCSX2 - PS2 Emulator for PCs
- *  Copyright (C) 2023 PCSX2 Dev Team
- *
- *  PCSX2 is free software: you can redistribute it and/or modify it under the terms
- *  of the GNU Lesser General Public License as published by the Free Software Found-
- *  ation, either version 3 of the License, or (at your option) any later version.
- *
- *  PCSX2 is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
- *  without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
- *  PURPOSE.  See the GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License along with PCSX2.
- *  If not, see <http://www.gnu.org/licenses/>.
- */
-
-#include "PrecompiledHeader.h"
+// SPDX-FileCopyrightText: 2002-2023 PCSX2 Dev Team
+// SPDX-License-Identifier: LGPL-3.0+
 
 #include "MainWindow.h"
 #include "QtHost.h"
 #include "QtUtils.h"
 #include "SettingWidgetBinder.h"
 #include "Settings/GameCheatSettingsWidget.h"
-#include "Settings/SettingsDialog.h"
+#include "Settings/SettingsWindow.h"
 
 #include "pcsx2/GameList.h"
 #include "pcsx2/Patch.h"
 
 #include "common/HeterogeneousContainers.h"
 
-GameCheatSettingsWidget::GameCheatSettingsWidget(SettingsDialog* dialog, QWidget* parent)
+GameCheatSettingsWidget::GameCheatSettingsWidget(SettingsWindow* dialog, QWidget* parent)
 	: m_dialog(dialog)
 {
 	m_ui.setupUi(this);
@@ -37,14 +23,16 @@ GameCheatSettingsWidget::GameCheatSettingsWidget(SettingsDialog* dialog, QWidget
 
 	SettingsInterface* sif = m_dialog->getSettingsInterface();
 	SettingWidgetBinder::BindWidgetToBoolSetting(sif, m_ui.enableCheats, "EmuCore", "EnableCheats", false);
+	SettingWidgetBinder::BindWidgetToBoolSetting(sif, m_ui.allCRCsCheckbox, "EmuCore", "ShowCheatsForAllCRCs", false);
 	updateListEnabled();
 
 	connect(m_ui.enableCheats, &QCheckBox::stateChanged, this, &GameCheatSettingsWidget::updateListEnabled);
 	connect(m_ui.cheatList, &QTreeWidget::itemDoubleClicked, this, &GameCheatSettingsWidget::onCheatListItemDoubleClicked);
 	connect(m_ui.cheatList, &QTreeWidget::itemChanged, this, &GameCheatSettingsWidget::onCheatListItemChanged);
-	connect(m_ui.reloadCheats, &QPushButton::clicked, this, &GameCheatSettingsWidget::reloadList);
+	connect(m_ui.reloadCheats, &QPushButton::clicked, this, &GameCheatSettingsWidget::onReloadClicked);
 	connect(m_ui.enableAll, &QPushButton::clicked, this, [this]() { setStateForAll(true); });
 	connect(m_ui.disableAll, &QPushButton::clicked, this, [this]() { setStateForAll(false); });
+	connect(m_ui.allCRCsCheckbox, &QCheckBox::stateChanged, this, &GameCheatSettingsWidget::onReloadClicked);
 }
 
 GameCheatSettingsWidget::~GameCheatSettingsWidget() = default;
@@ -92,6 +80,14 @@ void GameCheatSettingsWidget::updateListEnabled()
 	m_ui.enableAll->setEnabled(cheats_enabled);
 	m_ui.disableAll->setEnabled(cheats_enabled);
 	m_ui.reloadCheats->setEnabled(cheats_enabled);
+	m_ui.allCRCsCheckbox->setEnabled(cheats_enabled);
+}
+
+void GameCheatSettingsWidget::disableAllCheats()
+{
+	SettingsInterface* si = m_dialog->getSettingsInterface();
+	si->ClearSection(Patch::CHEATS_CONFIG_SECTION);
+	si->Save();
 }
 
 void GameCheatSettingsWidget::setCheatEnabled(std::string name, bool enabled, bool save_and_reload_settings)
@@ -152,7 +148,8 @@ void GameCheatSettingsWidget::setStateRecursively(QTreeWidgetItem* parent, bool 
 void GameCheatSettingsWidget::reloadList()
 {
 	u32 num_unlabelled_codes = 0;
-	m_patches = Patch::GetPatchInfo(m_dialog->getSerial(), m_dialog->getDiscCRC(), true, &num_unlabelled_codes);
+	bool showAllCRCS = m_ui.allCRCsCheckbox->isChecked();
+	m_patches = Patch::GetPatchInfo(m_dialog->getSerial(), m_dialog->getDiscCRC(), true, showAllCRCS, & num_unlabelled_codes);
 	m_enabled_patches =
 		m_dialog->getSettingsInterface()->GetStringList(Patch::CHEATS_CONFIG_SECTION, Patch::PATCH_ENABLE_CONFIG_KEY);
 

@@ -1,17 +1,5 @@
-/*  PCSX2 - PS2 Emulator for PCs
- *  Copyright (C) 2002-2023 PCSX2 Dev Team
- *
- *  PCSX2 is free software: you can redistribute it and/or modify it under the terms
- *  of the GNU Lesser General Public License as published by the Free Software Found-
- *  ation, either version 3 of the License, or (at your option) any later version.
- *
- *  PCSX2 is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
- *  without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
- *  PURPOSE.  See the GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License along with PCSX2.
- *  If not, see <http://www.gnu.org/licenses/>.
- */
+// SPDX-FileCopyrightText: 2002-2023 PCSX2 Dev Team
+// SPDX-License-Identifier: LGPL-3.0+
 
 #pragma once
 
@@ -171,6 +159,9 @@ public:
 	// gets a writable char array, do not write more than reserve characters to it.
 	__fi char* data() { return m_buffer; }
 
+	// returns the end of the string (pointer is past the last character)
+	__fi const char* end_ptr() const { return m_buffer + m_length; }
+
 	// STL adapters
 	__fi void push_back(value_type&& val) { append(val); }
 
@@ -250,10 +241,58 @@ public:
 		assign(move);
 	}
 
+	__fi SmallStackString(const SmallStackString& copy)
+	{
+		init();
+		assign(copy);
+	}
+
+	__fi SmallStackString(SmallStackString&& move)
+	{
+		init();
+		assign(move);
+	}
+
 	__fi SmallStackString(const std::string_view& sv)
 	{
 		init();
 		assign(sv);
+	}
+
+	__fi SmallStackString& operator=(const SmallStringBase& copy)
+	{
+		assign(copy);
+		return *this;
+	}
+
+	__fi SmallStackString& operator=(SmallStringBase&& move)
+	{
+		assign(move);
+		return *this;
+	}
+
+	__fi SmallStackString& operator=(const SmallStackString& copy)
+	{
+		assign(copy);
+		return *this;
+	}
+
+	__fi SmallStackString& operator=(SmallStackString&& move)
+	{
+		assign(move);
+		return *this;
+	}
+
+	__fi SmallStackString& operator=(const std::string_view& sv)
+	{
+		assign(sv);
+		return *this;
+	}
+
+	__fi SmallStackString& operator=(const char* str)
+	{
+		assign(str);
+		return *this;
 	}
 
 	// Override the fromstring method
@@ -318,3 +357,25 @@ __fi void SmallStringBase::fmt(fmt::format_string<T...> fmt, T&&... args)
 	clear();
 	fmt::vformat_to(std::back_inserter(*this), fmt, fmt::make_format_args(args...));
 }
+
+#define MAKE_FORMATTER(type) \
+	template <> \
+	struct fmt::formatter<type> \
+	{ \
+		template <typename ParseContext> \
+		constexpr auto parse(ParseContext& ctx) \
+		{ \
+			return ctx.begin(); \
+		} \
+\
+		template <typename FormatContext> \
+		auto format(const type& str, FormatContext& ctx) \
+		{ \
+			return fmt::format_to(ctx.out(), "{}", str.view()); \
+		} \
+	};
+
+MAKE_FORMATTER(TinyString);
+MAKE_FORMATTER(SmallString);
+
+#undef MAKE_FORMATTER

@@ -1,19 +1,5 @@
-/*  PCSX2 - PS2 Emulator for PCs
- *  Copyright (C) 2002-2023  PCSX2 Dev Team
- *
- *  PCSX2 is free software: you can redistribute it and/or modify it under the terms
- *  of the GNU Lesser General Public License as published by the Free Software Found-
- *  ation, either version 3 of the License, or (at your option) any later version.
- *
- *  PCSX2 is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
- *  without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
- *  PURPOSE.  See the GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License along with PCSX2.
- *  If not, see <http://www.gnu.org/licenses/>.
- */
-
-#include "PrecompiledHeader.h"
+// SPDX-FileCopyrightText: 2002-2023 PCSX2 Dev Team
+// SPDX-License-Identifier: LGPL-3.0+
 
 #include "GS/Renderers/Common/GSDevice.h"
 #include "Config.h"
@@ -34,6 +20,7 @@
 #include "common/FileSystem.h"
 #include "common/Easing.h"
 #include "common/StringUtil.h"
+#include "common/Path.h"
 #include "common/Timer.h"
 
 #include "fmt/core.h"
@@ -80,7 +67,7 @@ namespace ImGuiManager
 static float s_global_scale = 1.0f;
 
 static std::string s_font_path;
-static const ImWchar* s_font_range = nullptr;
+static std::vector<ImWchar> s_font_range;
 
 static ImFont* s_standard_font;
 static ImFont* s_fixed_font;
@@ -89,7 +76,8 @@ static ImFont* s_large_font;
 
 static std::vector<u8> s_standard_font_data;
 static std::vector<u8> s_fixed_font_data;
-static std::vector<u8> s_icon_font_data;
+static std::vector<u8> s_icon_fa_font_data;
+static std::vector<u8> s_icon_pf_font_data;
 
 static float s_window_width;
 static float s_window_height;
@@ -111,16 +99,30 @@ static bool s_fullscreen_ui_was_initialized = false;
 
 static std::array<ImGuiManager::SoftwareCursor, InputManager::MAX_SOFTWARE_CURSORS> s_software_cursors = {};
 
-void ImGuiManager::SetFontPath(std::string path)
+void ImGuiManager::SetFontPathAndRange(std::string path, std::vector<u16> range)
 {
-	s_font_path = std::move(path);
-	s_standard_font_data = {};
-}
+	if (s_font_path == path && s_font_range == range)
+		return;
 
-void ImGuiManager::SetFontRange(const u16* range)
-{
-	s_font_range = range;
+	s_font_path = std::move(path);
+	s_font_range = std::move(range);
 	s_standard_font_data = {};
+
+	if (ImGui::GetCurrentContext())
+	{
+		ImGui::EndFrame();
+
+		if (!LoadFontData())
+			pxFailRel("Failed to load font data");
+
+		if (!AddImGuiFonts(HasFullscreenFonts()))
+			pxFailRel("Failed to create ImGui font text");
+
+		if (!g_gs_device->UpdateImGuiFontTexture())
+			pxFailRel("Failed to recreate font texture after scale+resize");
+
+		NewFrame();
+	}
 }
 
 bool ImGuiManager::Initialize()
@@ -188,6 +190,7 @@ void ImGuiManager::Shutdown(bool clear_state)
 
 	FullscreenUI::Shutdown(clear_state);
 	ImGuiFullscreen::SetFonts(nullptr, nullptr, nullptr);
+	SaveStateSelectorUI::DestroyTextures();
 	if (clear_state)
 		s_fullscreen_ui_was_initialized = false;
 
@@ -234,7 +237,7 @@ void ImGuiManager::UpdateScale()
 	const float window_scale = g_gs_device ? g_gs_device->GetWindowScale() : 1.0f;
 	const float scale = std::max(window_scale * (EmuConfig.GS.OsdScale / 100.0f), 0.5f);
 
-	if (scale == s_global_scale && (!HasFullscreenFonts() || !ImGuiFullscreen::UpdateLayoutScale()))
+	if ((!HasFullscreenFonts() || !ImGuiFullscreen::UpdateLayoutScale()) && scale == s_global_scale)
 		return;
 
 	// This is assumed to be called mid-frame.
@@ -390,9 +393,10 @@ bool ImGuiManager::LoadFontData()
 {
 	if (s_standard_font_data.empty())
 	{
-		std::optional<std::vector<u8>> font_data = s_font_path.empty() ?
-													   Host::ReadResourceFile("fonts/Roboto-Regular.ttf") :
-													   FileSystem::ReadBinaryFile(s_font_path.c_str());
+		std::optional<std::vector<u8>> font_data =
+			s_font_path.empty() ? FileSystem::ReadBinaryFile(
+									  Path::Combine(EmuFolders::Resources, "fonts" FS_OSPATH_SEPARATOR_STR "Roboto-Regular.ttf").c_str()) :
+								  FileSystem::ReadBinaryFile(s_font_path.c_str());
 		if (!font_data.has_value())
 			return false;
 
@@ -401,20 +405,32 @@ bool ImGuiManager::LoadFontData()
 
 	if (s_fixed_font_data.empty())
 	{
-		std::optional<std::vector<u8>> font_data = Host::ReadResourceFile("fonts/RobotoMono-Medium.ttf");
+		std::optional<std::vector<u8>> font_data = FileSystem::ReadBinaryFile(
+			Path::Combine(EmuFolders::Resources, "fonts" FS_OSPATH_SEPARATOR_STR "RobotoMono-Medium.ttf").c_str());
 		if (!font_data.has_value())
 			return false;
 
 		s_fixed_font_data = std::move(font_data.value());
 	}
 
-	if (s_icon_font_data.empty())
+	if (s_icon_fa_font_data.empty())
 	{
-		std::optional<std::vector<u8>> font_data = Host::ReadResourceFile("fonts/fa-solid-900.ttf");
+		std::optional<std::vector<u8>> font_data =
+			FileSystem::ReadBinaryFile(Path::Combine(EmuFolders::Resources, "fonts" FS_OSPATH_SEPARATOR_STR "fa-solid-900.ttf").c_str());
 		if (!font_data.has_value())
 			return false;
 
-		s_icon_font_data = std::move(font_data.value());
+		s_icon_fa_font_data = std::move(font_data.value());
+	}
+
+	if (s_icon_pf_font_data.empty())
+	{
+		std::optional<std::vector<u8>> font_data =
+			FileSystem::ReadBinaryFile(Path::Combine(EmuFolders::Resources, "fonts" FS_OSPATH_SEPARATOR_STR "promptfont.otf").c_str());
+		if (!font_data.has_value())
+			return false;
+
+		s_icon_pf_font_data = std::move(font_data.value());
 	}
 
 	return true;
@@ -424,7 +440,8 @@ void ImGuiManager::UnloadFontData()
 {
 	std::vector<u8>().swap(s_standard_font_data);
 	std::vector<u8>().swap(s_fixed_font_data);
-	std::vector<u8>().swap(s_icon_font_data);
+	std::vector<u8>().swap(s_icon_fa_font_data);
+	std::vector<u8>().swap(s_icon_pf_font_data);
 }
 
 ImFont* ImGuiManager::AddTextFont(float size)
@@ -452,7 +469,8 @@ ImFont* ImGuiManager::AddTextFont(float size)
 	ImFontConfig cfg;
 	cfg.FontDataOwnedByAtlas = false;
 	return ImGui::GetIO().Fonts->AddFontFromMemoryTTF(
-		s_standard_font_data.data(), static_cast<int>(s_standard_font_data.size()), size, &cfg, s_font_range ? s_font_range : default_ranges);
+		s_standard_font_data.data(), static_cast<int>(s_standard_font_data.size()), size, &cfg,
+		s_font_range.empty() ? default_ranges : s_font_range.data());
 }
 
 ImFont* ImGuiManager::AddFixedFont(float size)
@@ -466,18 +484,41 @@ ImFont* ImGuiManager::AddFixedFont(float size)
 bool ImGuiManager::AddIconFonts(float size)
 {
 	// clang-format off
-	static constexpr ImWchar range_fa[] = { 0xf002,0xf002,0xf005,0xf005,0xf007,0xf007,0xf00c,0xf00e,0xf011,0xf011,0xf013,0xf013,0xf017,0xf017,0xf019,0xf019,0xf01c,0xf01c,0xf021,0xf021,0xf023,0xf023,0xf025,0xf025,0xf027,0xf028,0xf02d,0xf02e,0xf030,0xf030,0xf03a,0xf03a,0xf03d,0xf03d,0xf04a,0xf04c,0xf04e,0xf04e,0xf050,0xf050,0xf052,0xf052,0xf059,0xf059,0xf05e,0xf05e,0xf063,0xf063,0xf065,0xf065,0xf067,0xf067,0xf06a,0xf06a,0xf071,0xf071,0xf077,0xf078,0xf07b,0xf07c,0xf084,0xf085,0xf091,0xf091,0xf0ac,0xf0ad,0xf0b0,0xf0b0,0xf0c5,0xf0c5,0xf0c7,0xf0c9,0xf0cb,0xf0cb,0xf0d0,0xf0d0,0xf0dc,0xf0dc,0xf0e2,0xf0e2,0xf0eb,0xf0eb,0xf0f1,0xf0f1,0xf0f3,0xf0f3,0xf0fe,0xf0fe,0xf110,0xf110,0xf119,0xf119,0xf11b,0xf11c,0xf121,0xf121,0xf133,0xf133,0xf140,0xf140,0xf144,0xf144,0xf14a,0xf14a,0xf15b,0xf15b,0xf15d,0xf15d,0xf188,0xf188,0xf191,0xf192,0xf1c9,0xf1c9,0xf1dd,0xf1de,0xf1e6,0xf1e6,0xf1ea,0xf1eb,0xf1f8,0xf1f8,0xf1fc,0xf1fc,0xf242,0xf242,0xf245,0xf245,0xf26c,0xf26c,0xf279,0xf279,0xf2d0,0xf2d0,0xf2db,0xf2db,0xf2f2,0xf2f2,0xf2f5,0xf2f5,0xf302,0xf302,0xf3c1,0xf3c1,0xf3fd,0xf3fd,0xf410,0xf410,0xf466,0xf466,0xf500,0xf500,0xf517,0xf517,0xf51f,0xf51f,0xf543,0xf543,0xf545,0xf545,0xf547,0xf548,0xf552,0xf552,0xf5a2,0xf5a2,0xf65d,0xf65e,0xf6a9,0xf6a9,0xf756,0xf756,0xf7c2,0xf7c2,0xf807,0xf807,0xf815,0xf815,0xf818,0xf818,0xf84c,0xf84c,0xf8cc,0xf8cc,0xf8d9,0xf8d9,0x0,0x0 };
+	static constexpr ImWchar range_fa[] = { 0xf002,0xf002,0xf005,0xf005,0xf007,0xf007,0xf00c,0xf00e,0xf011,0xf011,0xf013,0xf013,0xf017,0xf017,0xf019,0xf019,0xf01c,0xf01c,0xf021,0xf021,0xf023,0xf023,0xf025,0xf025,0xf027,0xf028,0xf02e,0xf02e,0xf030,0xf030,0xf03a,0xf03a,0xf03d,0xf03d,0xf04a,0xf04c,0xf04e,0xf04e,0xf050,0xf050,0xf052,0xf052,0xf059,0xf059,0xf05e,0xf05e,0xf063,0xf063,0xf065,0xf065,0xf067,0xf067,0xf06a,0xf06a,0xf071,0xf071,0xf077,0xf078,0xf07b,0xf07c,0xf084,0xf085,0xf091,0xf091,0xf0ac,0xf0ad,0xf0b0,0xf0b0,0xf0c5,0xf0c5,0xf0c7,0xf0c9,0xf0cb,0xf0cb,0xf0d0,0xf0d0,0xf0dc,0xf0dc,0xf0e2,0xf0e2,0xf0eb,0xf0eb,0xf0f1,0xf0f1,0xf0f3,0xf0f3,0xf0fe,0xf0fe,0xf110,0xf110,0xf119,0xf119,0xf11b,0xf11c,0xf121,0xf121,0xf133,0xf133,0xf140,0xf140,0xf144,0xf144,0xf14a,0xf14a,0xf15b,0xf15b,0xf15d,0xf15d,0xf188,0xf188,0xf191,0xf192,0xf1c9,0xf1c9,0xf1dd,0xf1de,0xf1e6,0xf1e6,0xf1ea,0xf1eb,0xf1f8,0xf1f8,0xf1fc,0xf1fc,0xf242,0xf242,0xf245,0xf245,0xf26c,0xf26c,0xf279,0xf279,0xf2d0,0xf2d0,0xf2db,0xf2db,0xf2f2,0xf2f2,0xf2f5,0xf2f5,0xf302,0xf302,0xf3c1,0xf3c1,0xf3fd,0xf3fd,0xf410,0xf410,0xf466,0xf466,0xf500,0xf500,0xf517,0xf517,0xf51f,0xf51f,0xf543,0xf543,0xf545,0xf545,0xf547,0xf548,0xf552,0xf552,0xf56d,0xf56d,0xf5a2,0xf5a2,0xf5e7,0xf5e7,0xf65d,0xf65e,0xf6a9,0xf6a9,0xf756,0xf756,0xf7c2,0xf7c2,0xf807,0xf807,0xf815,0xf815,0xf818,0xf818,0xf84c,0xf84c,0xf8cc,0xf8cc,0xf8d9,0xf8d9,0x0,0x0 };
+	static constexpr ImWchar range_pf[] = { 0x2198,0x2199,0x219e,0x21a1,0x21b0,0x21b3,0x21ba,0x21c3,0x21d0,0x21d4,0x21dc,0x21dd,0x21e0,0x21e3,0x21f3,0x21f3,0x21f7,0x21f8,0x21fa,0x21fb,0x227a,0x227d,0x22bf,0x22c8,0x23b2,0x23b4,0x23f4,0x23f7,0x2427,0x243a,0x243c,0x243c,0x2443,0x2443,0x2460,0x246b,0x24f5,0x24fd,0x24ff,0x24ff,0x278a,0x278e,0xe001,0xe001,0xff21,0xff3a,0x0,0x0 };
 	// clang-format on
 
-	ImFontConfig cfg;
-	cfg.MergeMode = true;
-	cfg.PixelSnapH = true;
-	cfg.GlyphMinAdvanceX = size;
-	cfg.GlyphMaxAdvanceX = size;
-	cfg.FontDataOwnedByAtlas = false;
+	{
+		ImFontConfig cfg;
+		cfg.MergeMode = true;
+		cfg.PixelSnapH = true;
+		cfg.GlyphMinAdvanceX = size;
+		cfg.GlyphMaxAdvanceX = size;
+		cfg.FontDataOwnedByAtlas = false;
 
-	return (ImGui::GetIO().Fonts->AddFontFromMemoryTTF(
-				s_icon_font_data.data(), static_cast<int>(s_icon_font_data.size()), size * 0.75f, &cfg, range_fa) != nullptr);
+		if (!ImGui::GetIO().Fonts->AddFontFromMemoryTTF(
+				s_icon_fa_font_data.data(), static_cast<int>(s_icon_fa_font_data.size()), size * 0.75f, &cfg, range_fa))
+		{
+			return false;
+		}
+	}
+
+	{
+		ImFontConfig cfg;
+		cfg.MergeMode = true;
+		cfg.PixelSnapH = true;
+		cfg.GlyphMinAdvanceX = size;
+		cfg.GlyphMaxAdvanceX = size;
+		cfg.FontDataOwnedByAtlas = false;
+
+		if (!ImGui::GetIO().Fonts->AddFontFromMemoryTTF(
+				s_icon_pf_font_data.data(), static_cast<int>(s_icon_pf_font_data.size()), size * 1.2f, &cfg, range_pf))
+		{
+			return false;
+		}
+	}
+
+	return true;
 }
 
 bool ImGuiManager::AddImGuiFonts(bool fullscreen_fonts)

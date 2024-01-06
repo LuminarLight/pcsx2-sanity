@@ -1,19 +1,5 @@
-/*  PCSX2 - PS2 Emulator for PCs
- *  Copyright (C) 2002-2023  PCSX2 Dev Team
- *
- *  PCSX2 is free software: you can redistribute it and/or modify it under the terms
- *  of the GNU Lesser General Public License as published by the Free Software Found-
- *  ation, either version 3 of the License, or (at your option) any later version.
- *
- *  PCSX2 is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
- *  without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
- *  PURPOSE.  See the GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License along with PCSX2.
- *  If not, see <http://www.gnu.org/licenses/>.
- */
-
-#include "PrecompiledHeader.h"
+// SPDX-FileCopyrightText: 2002-2023 PCSX2 Dev Team
+// SPDX-License-Identifier: LGPL-3.0+
 
 #include "DisplayWidget.h"
 #include "MainWindow.h"
@@ -23,6 +9,7 @@
 #include "pcsx2/ImGui/ImGuiManager.h"
 
 #include "common/Assertions.h"
+#include "common/Console.h"
 
 #include <QtCore/QDebug>
 #include <QtGui/QGuiApplication>
@@ -148,7 +135,9 @@ void DisplayWidget::handleCloseEvent(QCloseEvent* event)
 {
 	// Closing the separate widget will either cancel the close, or trigger shutdown.
 	// In the latter case, it's going to destroy us, so don't let Qt do it first.
-	if (QtHost::IsVMValid())
+	// Treat a close event while fullscreen as an exit, that way ALT+F4 closes PCSX2,
+	// rather than just the game.
+	if (QtHost::IsVMValid() && !isActuallyFullscreen())
 	{
 		QMetaObject::invokeMethod(g_main_window, "requestShutdown", Q_ARG(bool, true),
 			Q_ARG(bool, true), Q_ARG(bool, false));
@@ -170,10 +159,17 @@ void DisplayWidget::destroy()
 	// See Qt documentation, entire application is in full screen state, and the main
 	// window will get reopened fullscreen instead of windowed if we don't close the
 	// fullscreen window first.
-	if (isFullScreen())
+	if (isActuallyFullscreen())
 		close();
 #endif
 	deleteLater();
+}
+
+bool DisplayWidget::isActuallyFullscreen() const
+{
+	// I hate you QtWayland... have to check the parent, not ourselves.
+	QWidget* container = qobject_cast<QWidget*>(parent());
+	return container ? container->isFullScreen() : isFullScreen();
 }
 
 void DisplayWidget::updateCenterPos()

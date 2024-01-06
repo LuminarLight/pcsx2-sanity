@@ -1,17 +1,5 @@
-/*  PCSX2 - PS2 Emulator for PCs
- *  Copyright (C) 2002-2022  PCSX2 Dev Team
- *
- *  PCSX2 is free software: you can redistribute it and/or modify it under the terms
- *  of the GNU Lesser General Public License as published by the Free Software Found-
- *  ation, either version 3 of the License, or (at your option) any later version.
- *
- *  PCSX2 is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
- *  without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
- *  PURPOSE.  See the GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License along with PCSX2.
- *  If not, see <http://www.gnu.org/licenses/>.
- */
+// SPDX-FileCopyrightText: 2002-2023 PCSX2 Dev Team
+// SPDX-License-Identifier: LGPL-3.0+
 
 #pragma once
 
@@ -24,7 +12,7 @@
 #include "DEV9DnsHostDialog.h"
 #include "DEV9/net.h"
 
-class SettingsDialog;
+class SettingsWindow;
 
 class DEV9SettingsWidget : public QWidget
 {
@@ -47,17 +35,14 @@ private Q_SLOTS:
 
 	void onHddEnabledChanged(int state);
 	void onHddBrowseFileClicked();
+	void onHddFileTextChange();
 	void onHddFileEdit();
 	void onHddSizeSlide(int i);
-	// Per game only.
-	void onHddSizeSliderContext(const QPoint& pt);
-	void onHddSizeSliderReset(bool checked = false);
-	//
 	void onHddSizeAccessorSpin();
 	void onHddCreateClicked();
 
 public:
-	DEV9SettingsWidget(SettingsDialog* dialog, QWidget* parent);
+	DEV9SettingsWidget(SettingsWindow* dialog, QWidget* parent);
 	~DEV9SettingsWidget();
 
 protected:
@@ -73,7 +58,10 @@ private:
 	void AddNewHostConfig(const HostEntryUi& host);
 	void DeleteHostConfig(int index);
 
-	SettingsDialog* m_dialog;
+	void UpdateHddSizeUIEnabled();
+	void UpdateHddSizeUIValues();
+
+	SettingsWindow* m_dialog;
 
 	Ui::DEV9SettingsWidget m_ui;
 

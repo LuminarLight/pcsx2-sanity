@@ -1,17 +1,5 @@
-/*  PCSX2 - PS2 Emulator for PCs
- *  Copyright (C) 2002-2010  PCSX2 Dev Team
- *
- *  PCSX2 is free software: you can redistribute it and/or modify it under the terms
- *  of the GNU Lesser General Public License as published by the Free Software Found-
- *  ation, either version 3 of the License, or (at your option) any later version.
- *
- *  PCSX2 is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
- *  without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
- *  PURPOSE.  See the GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License along with PCSX2.
- *  If not, see <http://www.gnu.org/licenses/>.
- */
+// SPDX-FileCopyrightText: 2002-2023 PCSX2 Dev Team
+// SPDX-License-Identifier: LGPL-3.0+
 
 // --------------------------------------------------------------------------------------
 //  Source / Tracre Logging  (high volume logging facilities)
@@ -21,11 +9,8 @@
 // not supported, and typically all logs are written to disk (ASCII), thus making the
 // ASCII versions the more efficient option.
 
-#include "PrecompiledHeader.h"
-
 #include "DebugTools/Debug.h"
 #include "R3000A.h"
-#include "System.h"
 #include "x86/iR5900.h"
 
 #include "fmt/core.h"
@@ -104,8 +89,6 @@ static const TraceLogDescriptor
 
 	TLD_deci2 = {"DECI2", "DECI&2 Console", "Shows DECI2 debugging logs (EE processor)."},
 
-	TLD_sysoutConsole = {"SYSout", "System Out", "Shows strings printed to the system output stream."},
-
 	TLD_Pgif = {"PGIFout", "&PGIF Console", "Shows output from pgif the emulated ps1 gpu"},
 
 	TLD_recordingConsole = {"Input Recording", "Input Recording Console", "Shows recording related logs and information."},
@@ -116,7 +99,6 @@ static const TraceLogDescriptor
 SysConsoleLogPack::SysConsoleLogPack()
 	: ELF(&TLD_ELF, Color_Gray)
 	, eeRecPerf(&TLD_eeRecPerf, Color_Gray)
-	, sysoutConsole(&TLD_sysoutConsole, Color_Gray)
 	, pgifLog(&TLD_Pgif)
 	, eeConsole(&TLD_eeConsole)
 	, iopConsole(&TLD_iopConsole)

@@ -1,20 +1,6 @@
-/*  PCSX2 - PS2 Emulator for PCs
- *  Copyright (C) 2002-2023 PCSX2 Dev Team
- *
- *  PCSX2 is free software: you can redistribute it and/or modify it under the terms
- *  of the GNU Lesser General Public License as published by the Free Software Found-
- *  ation, either version 3 of the License, or (at your option) any later version.
- *
- *  PCSX2 is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
- *  without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
- *  PURPOSE.  See the GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License along with PCSX2.
- *  If not, see <http://www.gnu.org/licenses/>.
- */
+// SPDX-FileCopyrightText: 2002-2023 PCSX2 Dev Team
+// SPDX-License-Identifier: LGPL-3.0+
 
-
-#include "PrecompiledHeader.h"
 #include "Common.h"
 
 #include "common/StringUtil.h"
@@ -40,6 +26,8 @@
 #include "DebugTools/MIPSAnalyst.h"
 #include "DebugTools/SymbolMap.h"
 #include "R5900OpcodeTables.h"
+
+#include "fmt/format.h"
 
 using namespace R5900;	// for R5900 disasm tools
 
@@ -67,12 +55,8 @@ const int kMaxArgs = 16;
 uptr g_argPtrs[kMaxArgs];
 #define DEBUG_LAUNCHARG 0 // show lots of helpful console messages as the launch arguments are passed to the game
 
-extern SysMainMemory& GetVmMemory();
-
 void cpuReset()
 {
-	GetVmMemory().Reset();
-
 	std::memset(&cpuRegs, 0, sizeof(cpuRegs));
 	std::memset(&fpuRegs, 0, sizeof(fpuRegs));
 	std::memset(&tlb, 0, sizeof(tlb));
@@ -91,8 +75,6 @@ void cpuReset()
 	psxReset();
 	pgifInit();
 
-	hwReset();
-
 	extern void Deci2Reset();		// lazy, no good header for it yet.
 	Deci2Reset();
 
@@ -102,6 +84,8 @@ void cpuReset()
 	g_eeloadMain = 0;
 	g_eeloadExec = 0;
 	g_osdsys_str = 0;
+
+	CBreakPoints::ClearSkipFirst();
 }
 
 __ri void cpuException(u32 code, u32 bd)
@@ -579,9 +563,8 @@ int ParseArgumentString(u32 arg_block)
 	if (!arg_block)
 		return 0;
 
-	int argc = 1; // one arg is guaranteed at least
-	g_argPtrs[0] = arg_block; // first arg is right here
-	bool wasSpace = false; // status of last char. scanned
+	int argc = 0;
+	bool wasSpace = true; // status of last char. scanned
 	int args_len = strlen((char *)PSM(arg_block));
 	for (int i = 0; i < args_len; i++)
 	{

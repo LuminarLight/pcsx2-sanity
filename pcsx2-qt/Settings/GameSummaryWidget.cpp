@@ -1,23 +1,9 @@
-/*  PCSX2 - PS2 Emulator for PCs
- *  Copyright (C) 2002-2023  PCSX2 Dev Team
- *
- *  PCSX2 is free software: you can redistribute it and/or modify it under the terms
- *  of the GNU Lesser General Public License as published by the Free Software Found-
- *  ation, either version 3 of the License, or (at your option) any later version.
- *
- *  PCSX2 is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
- *  without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
- *  PURPOSE.  See the GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License along with PCSX2.
- *  If not, see <http://www.gnu.org/licenses/>.
- */
-
-#include "PrecompiledHeader.h"
+// SPDX-FileCopyrightText: 2002-2023 PCSX2 Dev Team
+// SPDX-License-Identifier: LGPL-3.0+
 
 #include "pcsx2/SIO/Pad/Pad.h"
 #include "GameSummaryWidget.h"
-#include "SettingsDialog.h"
+#include "SettingsWindow.h"
 #include "MainWindow.h"
 #include "QtHost.h"
 #include "QtProgressCallback.h"
@@ -38,7 +24,7 @@
 #include <QtWidgets/QFileDialog>
 #include <QtWidgets/QMessageBox>
 
-GameSummaryWidget::GameSummaryWidget(const GameList::Entry* entry, SettingsDialog* dialog, QWidget* parent)
+GameSummaryWidget::GameSummaryWidget(const GameList::Entry* entry, SettingsWindow* dialog, QWidget* parent)
 	: m_dialog(dialog)
 {
 	m_ui.setupUi(this);
@@ -81,12 +67,20 @@ void GameSummaryWidget::populateInputProfiles()
 void GameSummaryWidget::populateDetails(const GameList::Entry* entry)
 {
 	m_ui.title->setText(QString::fromStdString(entry->title));
+	m_ui.titleSort->setText(QString::fromStdString(entry->title_sort));
+	m_ui.titleEN->setText(QString::fromStdString(entry->title_en));
 	m_ui.path->setText(QString::fromStdString(entry->path));
 	m_ui.serial->setText(QString::fromStdString(entry->serial));
 	m_ui.crc->setText(QString::fromStdString(fmt::format("{:08X}", entry->crc)));
 	m_ui.type->setCurrentIndex(static_cast<int>(entry->type));
 	m_ui.region->setCurrentIndex(static_cast<int>(entry->region));
 	m_ui.compatibility->setCurrentIndex(static_cast<int>(entry->compatibility_rating));
+
+	int row = 0;
+	m_ui.detailsFormLayout->getWidgetPosition(m_ui.titleSort, &row, nullptr);
+	m_ui.detailsFormLayout->setRowVisible(row, !entry->title_sort.empty());
+	m_ui.detailsFormLayout->getWidgetPosition(m_ui.titleEN, &row, nullptr);
+	m_ui.detailsFormLayout->setRowVisible(row, !entry->title_en.empty());
 
 	std::optional<std::string> profile(m_dialog->getStringValue("EmuCore", "InputProfileName", std::nullopt));
 	if (profile.has_value())
@@ -128,7 +122,9 @@ void GameSummaryWidget::populateDiscPath(const GameList::Entry* entry)
 	else
 	{
 		// Makes no sense to have disc override for a disc.
-		m_ui.detailsFormLayout->removeRow(8);
+		int row = 0;
+		m_ui.detailsFormLayout->getWidgetPosition(m_ui.label_discPath, &row, nullptr);
+		m_ui.detailsFormLayout->removeRow(row);
 		m_ui.discPath = nullptr;
 		m_ui.discPathBrowse = nullptr;
 		m_ui.discPathClear = nullptr;

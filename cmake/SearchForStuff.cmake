@@ -8,8 +8,10 @@ if (WIN32)
 	# We bundle everything on Windows
 	add_subdirectory(3rdparty/zlib EXCLUDE_FROM_ALL)
 	add_subdirectory(3rdparty/libpng EXCLUDE_FROM_ALL)
-	add_subdirectory(3rdparty/libjpeg EXCLUDE_FROM_ALL)
+	add_subdirectory(3rdparty/libwebp EXCLUDE_FROM_ALL)
 	add_subdirectory(3rdparty/xz EXCLUDE_FROM_ALL)
+	add_subdirectory(3rdparty/zstd EXCLUDE_FROM_ALL)
+	add_subdirectory(3rdparty/lz4 EXCLUDE_FROM_ALL)
 	add_subdirectory(3rdparty/D3D12MemAlloc EXCLUDE_FROM_ALL)
 	add_subdirectory(3rdparty/winpixeventruntime EXCLUDE_FROM_ALL)
 	set(FFMPEG_INCLUDE_DIRS "${CMAKE_SOURCE_DIR}/3rdparty/ffmpeg/include")
@@ -48,9 +50,9 @@ else()
 	endif()
 
 	find_package(ZLIB REQUIRED)
-
-	## Use pcsx2 package to find module
-	include(FindLibc)
+	find_package(Zstd REQUIRED)
+	find_package(LZ4 REQUIRED)
+	find_package(WebP REQUIRED)
 
 	## Use CheckLib package to find module
 	include(CheckLib)
@@ -60,17 +62,9 @@ else()
 			check_lib(EGL EGL EGL/egl.h)
 		endif()
 
-		if(Linux)
+		if(LINUX)
 			check_lib(AIO aio libaio.h)
-			# There are two udev pkg config files - udev.pc (wrong), libudev.pc (correct)
-			# When cross compiling, pkg-config will be skipped so we have to look for
-			# udev (it'll automatically be prefixed with lib). But when not cross
-			# compiling, we have to look for libudev.pc. Argh. Hence the silliness below.
-			if(CMAKE_CROSSCOMPILING)
-				check_lib(LIBUDEV udev libudev.h)
-			else()
-				check_lib(LIBUDEV libudev libudev.h)
-			endif()
+			check_lib(LIBUDEV libudev libudev.h)
 		endif()
 
 		if(X11_API)
@@ -96,7 +90,7 @@ endif(WIN32)
 find_package(Threads REQUIRED)
 
 # Also need SDL2.
-find_package(SDL2 2.28.2 REQUIRED)
+find_package(SDL2 2.28.5 REQUIRED)
 
 set(ACTUALLY_ENABLE_TESTS ${ENABLE_TESTS})
 if(ENABLE_TESTS)
@@ -106,19 +100,10 @@ if(ENABLE_TESTS)
 	endif()
 endif()
 
-if(GCC_VERSION VERSION_GREATER_EQUAL "9.0" AND GCC_VERSION VERSION_LESS "9.2")
-	message(WARNING "
-	It looks like you are compiling with 9.0.x or 9.1.x. Using these versions is not recommended,
-	as there is a bug known to cause the compiler to segfault while compiling. See patch
-	https://gitweb.gentoo.org/proj/gcc-patches.git/commit/?id=275ab714637a64672c6630cfd744af2c70957d5a
-	Even with that patch, compiling with LTO may still segfault. Use at your own risk!
-	This text being in a compile log in an open issue may cause it to be closed.")
-endif()
-
-add_subdirectory(3rdparty/fmt/fmt EXCLUDE_FROM_ALL)
 add_subdirectory(3rdparty/rapidyaml/rapidyaml EXCLUDE_FROM_ALL)
 add_subdirectory(3rdparty/lzma EXCLUDE_FROM_ALL)
 add_subdirectory(3rdparty/libchdr EXCLUDE_FROM_ALL)
+disable_compiler_warnings_for_target(libchdr)
 add_subdirectory(3rdparty/soundtouch EXCLUDE_FROM_ALL)
 
 # rapidyaml includes fast_float as a submodule, saves us pulling it in directly.
@@ -135,7 +120,6 @@ add_subdirectory(3rdparty/imgui EXCLUDE_FROM_ALL)
 add_subdirectory(3rdparty/cpuinfo EXCLUDE_FROM_ALL)
 disable_compiler_warnings_for_target(cpuinfo)
 add_subdirectory(3rdparty/zydis EXCLUDE_FROM_ALL)
-add_subdirectory(3rdparty/zstd EXCLUDE_FROM_ALL)
 add_subdirectory(3rdparty/libzip EXCLUDE_FROM_ALL)
 add_subdirectory(3rdparty/rcheevos EXCLUDE_FROM_ALL)
 add_subdirectory(3rdparty/rapidjson EXCLUDE_FROM_ALL)
@@ -155,25 +139,21 @@ disable_compiler_warnings_for_target(cubeb)
 disable_compiler_warnings_for_target(speex)
 
 # Find the Qt components that we need.
-find_package(Qt6 COMPONENTS CoreTools Core GuiTools Gui WidgetsTools Widgets Network LinguistTools REQUIRED)
+find_package(Qt6 6.6.0 COMPONENTS CoreTools Core GuiTools Gui WidgetsTools Widgets LinguistTools REQUIRED)
 
 if(WIN32)
   add_subdirectory(3rdparty/rainterface EXCLUDE_FROM_ALL)
 endif()
 
-if (APPLE AND CMAKE_OSX_DEPLOYMENT_TARGET AND "${CMAKE_OSX_DEPLOYMENT_TARGET}" VERSION_LESS 10.15)
-	get_target_property(QT_FEATURES Qt6::Core QT_ENABLED_PUBLIC_FEATURES)
-	if (cxx17_filesystem IN_LIST QT_FEATURES)
-		message("Qt compiled with std::filesystem support, requires macOS 10.15")
-		set(CMAKE_OSX_DEPLOYMENT_TARGET 10.15)
-	endif()
-endif()
-
 # Demangler for the debugger
 add_subdirectory(3rdparty/demangler EXCLUDE_FROM_ALL)
+
+# Prevent fmt from being built with exceptions, or being thrown at call sites.
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DFMT_EXCEPTIONS=0")
+add_subdirectory(3rdparty/fmt/fmt EXCLUDE_FROM_ALL)
 
 # Deliberately at the end. We don't want to set the flag on third-party projects.
 if(MSVC)
 	# Don't warn about "deprecated" POSIX functions.
-	add_definitions("-D_CRT_SECURE_NO_WARNINGS" "-DCRT_SECURE_NO_DEPRECATE")
+	add_definitions("-D_CRT_NONSTDC_NO_WARNINGS" "-D_CRT_SECURE_NO_WARNINGS" "-DCRT_SECURE_NO_DEPRECATE")
 endif()

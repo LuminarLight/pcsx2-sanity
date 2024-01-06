@@ -1,19 +1,5 @@
-/*  PCSX2 - PS2 Emulator for PCs
- *  Copyright (C) 2002-2023  PCSX2 Dev Team
- *
- *  PCSX2 is free software: you can redistribute it and/or modify it under the terms
- *  of the GNU Lesser General Public License as published by the Free Software Found-
- *  ation, either version 3 of the License, or (at your option) any later version.
- *
- *  PCSX2 is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
- *  without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
- *  PURPOSE.  See the GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License along with PCSX2.
- *  If not, see <http://www.gnu.org/licenses/>.
- */
-
-#include "PrecompiledHeader.h"
+// SPDX-FileCopyrightText: 2002-2023 PCSX2 Dev Team
+// SPDX-License-Identifier: LGPL-3.0+
 
 #include "ImGui/ImGuiManager.h"
 #include "Input/InputManager.h"
@@ -24,12 +10,16 @@
 #include "VMManager.h"
 
 #include "common/Assertions.h"
+#include "common/Console.h"
 #include "common/StringUtil.h"
 #include "common/Timer.h"
+
+#include "IconsPromptFont.h"
 
 #include "fmt/core.h"
 
 #include <array>
+#include <atomic>
 #include <memory>
 #include <mutex>
 #include <sstream>
@@ -104,6 +94,7 @@ namespace InputManager
 
 	static std::vector<std::string_view> SplitChord(const std::string_view& binding);
 	static bool SplitBinding(const std::string_view& binding, std::string_view* source, std::string_view* sub_binding);
+	static void PrettifyInputBindingPart(const std::string_view binding, SmallString& ret, bool& changed);
 	static void AddBinding(const std::string_view& binding, const InputEventHandler& handler);
 	static void AddBindings(const std::vector<std::string>& bindings, const InputEventHandler& handler);
 	static bool ParseBindingAndGetSource(const std::string_view& binding, InputBindingKey* key, InputSource** source);
@@ -230,11 +221,11 @@ std::optional<InputBindingKey> InputManager::ParseInputBindingKey(const std::str
 		return std::nullopt;
 
 	// lameee, string matching
-	if (StringUtil::StartsWith(source, "Keyboard"))
+	if (source.starts_with("Keyboard"))
 	{
 		return ParseHostKeyboardKey(source, sub_binding);
 	}
-	else if (StringUtil::StartsWith(source, "Pointer"))
+	else if (source.starts_with("Pointer"))
 	{
 		return ParsePointerKey(source, sub_binding);
 	}
@@ -325,7 +316,7 @@ std::string InputManager::ConvertInputBindingKeyToString(InputBindingInfo::Type 
 		}
 		else if (key.source_type < InputSourceType::Count && s_input_sources[static_cast<u32>(key.source_type)])
 		{
-			return s_input_sources[static_cast<u32>(key.source_type)]->ConvertKeyToString(key);
+			return std::string(s_input_sources[static_cast<u32>(key.source_type)]->ConvertKeyToString(key));
 		}
 	}
 
@@ -357,6 +348,117 @@ std::string InputManager::ConvertInputBindingKeysToString(InputBindingInfo::Type
 
 	return ss.str();
 }
+
+bool InputManager::PrettifyInputBinding(std::string& binding)
+{
+	if (binding.empty())
+		return false;
+
+	const std::string_view binding_view(binding);
+
+	SmallString ret;
+	bool changed = false;
+
+	std::string_view::size_type last = 0;
+	std::string_view::size_type next;
+	while ((next = binding_view.find('&', last)) != std::string_view::npos)
+	{
+		if (last != next)
+		{
+			const std::string_view part = StringUtil::StripWhitespace(binding_view.substr(last, next - last));
+			if (!part.empty())
+			{
+				if (!ret.empty())
+					ret.append(" + ");
+				PrettifyInputBindingPart(part, ret, changed);
+			}
+		}
+		last = next + 1;
+	}
+	if (last < (binding_view.size() - 1))
+	{
+		const std::string_view part = StringUtil::StripWhitespace(binding_view.substr(last));
+		if (!part.empty())
+		{
+			if (!ret.empty())
+				ret.append(" + ");
+			PrettifyInputBindingPart(part, ret, changed);
+		}
+	}
+
+	if (changed)
+		binding = ret.view();
+
+	return changed;
+}
+
+void InputManager::PrettifyInputBindingPart(const std::string_view binding, SmallString& ret, bool& changed)
+{
+	std::string_view source, sub_binding;
+	if (!SplitBinding(binding, &source, &sub_binding))
+		return;
+
+	// lameee, string matching
+	if (source.starts_with("Keyboard"))
+	{
+		std::optional<InputBindingKey> key = ParseHostKeyboardKey(source, sub_binding);
+		const char* icon = key.has_value() ? ConvertHostKeyboardCodeToIcon(key->data) : nullptr;
+		if (icon)
+		{
+			ret.append(icon);
+			changed = true;
+			return;
+		}
+	}
+	else if (source.starts_with("Pointer"))
+	{
+		const std::optional<InputBindingKey> key = ParsePointerKey(source, sub_binding);
+		if (key.has_value())
+		{
+			if (key->source_subtype == InputSubclass::PointerButton)
+			{
+				static constexpr const char* button_icons[] = {
+					ICON_PF_MOUSE_BUTTON_1,
+					ICON_PF_MOUSE_BUTTON_2,
+					ICON_PF_MOUSE_BUTTON_3,
+					ICON_PF_MOUSE_BUTTON_4,
+					ICON_PF_MOUSE_BUTTON_5,
+				};
+				if (key->data < std::size(button_icons))
+				{
+					ret.append(button_icons[key->data]);
+					changed = true;
+					return;
+				}
+			}
+		}
+	}
+	else
+	{
+		for (u32 i = FIRST_EXTERNAL_INPUT_SOURCE; i < LAST_EXTERNAL_INPUT_SOURCE; i++)
+		{
+			if (s_input_sources[i])
+			{
+				std::optional<InputBindingKey> key = s_input_sources[i]->ParseKeyString(source, sub_binding);
+				if (key.has_value())
+				{
+					const TinyString icon = s_input_sources[i]->ConvertKeyToIcon(key.value());
+					if (!icon.empty())
+					{
+						ret.append(icon);
+						changed = true;
+						return;
+					}
+
+					break;
+				}
+			}
+		}
+	}
+
+	ret.append(binding);
+}
+
 
 void InputManager::AddBinding(const std::string_view& binding, const InputEventHandler& handler)
 {
@@ -519,7 +621,7 @@ std::optional<InputBindingKey> InputManager::ParsePointerKey(const std::string_v
 	key.source_type = InputSourceType::Pointer;
 	key.source_index = static_cast<u32>(pointer_index.value());
 
-	if (StringUtil::StartsWith(sub_binding, "Button"))
+	if (sub_binding.starts_with("Button"))
 	{
 		const std::optional<s32> button_number = StringUtil::FromChars<s32>(sub_binding.substr(6));
 		if (!button_number.has_value() || button_number.value() < 0)
@@ -532,7 +634,7 @@ std::optional<InputBindingKey> InputManager::ParsePointerKey(const std::string_v
 
 	for (u32 i = 0; i < s_pointer_axis_names.size(); i++)
 	{
-		if (StringUtil::StartsWith(sub_binding, s_pointer_axis_names[i]))
+		if (sub_binding.starts_with(s_pointer_axis_names[i]))
 		{
 			key.source_subtype = InputSubclass::PointerAxis;
 			key.data = i;
@@ -564,7 +666,7 @@ std::optional<InputBindingKey> InputManager::ParsePointerKey(const std::string_v
 
 std::optional<u32> InputManager::GetIndexFromPointerBinding(const std::string_view& source)
 {
-	if (!StringUtil::StartsWith(source, "Pointer-"))
+	if (!source.starts_with("Pointer-"))
 		return std::nullopt;
 
 	const std::optional<s32> pointer_index = StringUtil::FromChars<s32>(source.substr(8));

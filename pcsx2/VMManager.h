@@ -1,21 +1,10 @@
-/*  PCSX2 - PS2 Emulator for PCs
- *  Copyright (C) 2002-2022  PCSX2 Dev Team
- *
- *  PCSX2 is free software: you can redistribute it and/or modify it under the terms
- *  of the GNU Lesser General Public License as published by the Free Software Found-
- *  ation, either version 3 of the License, or (at your option) any later version.
- *
- *  PCSX2 is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
- *  without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
- *  PURPOSE.  See the GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License along with PCSX2.
- *  If not, see <http://www.gnu.org/licenses/>.
- */
+// SPDX-FileCopyrightText: 2002-2023 PCSX2 Dev Team
+// SPDX-License-Identifier: LGPL-3.0+
 
 #pragma once
 
 #include <functional>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -47,6 +36,7 @@ struct VMBootParameters
 
 	std::optional<bool> fast_boot;
 	std::optional<bool> fullscreen;
+	bool disable_achievements_hardcore_mode = false;
 };
 
 namespace VMManager
@@ -79,7 +69,7 @@ namespace VMManager
 	std::string GetDiscELF();
 
 	/// Returns the name of the disc/executable currently running.
-	std::string GetTitle();
+	std::string GetTitle(bool prefer_en);
 
 	/// Returns the CRC for the main ELF of the disc currently running.
 	u32 GetDiscCRC();
@@ -89,6 +79,9 @@ namespace VMManager
 
 	/// Returns the crc of the executable currently running.
 	u32 GetCurrentCRC();
+
+	/// Returns the path to the ELF which is currently running. Only safe to read on the EE thread.
+	const std::string& GetCurrentELF();
 
 	/// Initializes all system components.
 	bool Initialize(VMBootParameters boot_params);
@@ -101,6 +94,9 @@ namespace VMManager
 
 	/// Runs the VM until the CPU execution is canceled.
 	void Execute();
+
+	/// Polls input, updates subsystems which are present while paused/inactive.
+	void IdlePollUpdate();
 
 	/// Changes the pause state of the VM, resetting anything needed when unpausing.
 	void SetPaused(bool paused);
@@ -215,7 +211,7 @@ namespace VMManager
 	u64 GetSessionPlayedTime();
 
 	/// Called when the rich presence string, provided by RetroAchievements, changes.
-	void UpdateDiscordPresence(const std::string& rich_presence);
+	void UpdateDiscordPresence(bool update_session_time);
 
 	/// Internal callbacks, implemented in the emu core.
 	namespace Internal
@@ -255,6 +251,9 @@ namespace VMManager
 
 		/// Throttles execution, or limits the frame rate.
 		void Throttle();
+
+		/// Resets/clears all execution/code caches.
+		void ClearCPUExecutionCaches();
 
 		const std::string& GetELFOverride();
 		bool IsExecutionInterrupted();

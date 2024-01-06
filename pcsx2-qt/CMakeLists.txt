@@ -64,6 +64,7 @@ target_sources(pcsx2-qt PRIVATE
 	Settings/ControllerBindingWidget.ui
 	Settings/ControllerBindingWidget_DualShock2.ui
 	Settings/ControllerBindingWidget_Guitar.ui
+	Settings/ControllerBindingWidget_Popn.ui
 	Settings/ControllerBindingWidgets.cpp
 	Settings/ControllerBindingWidgets.h
 	Settings/ControllerLEDSettingsDialog.ui
@@ -73,9 +74,9 @@ target_sources(pcsx2-qt PRIVATE
 	Settings/ControllerMacroEditWidget.ui
 	Settings/ControllerMacroWidget.ui
 	Settings/ControllerMouseSettingsDialog.ui
-	Settings/ControllerSettingsDialog.cpp
-	Settings/ControllerSettingsDialog.h
-	Settings/ControllerSettingsDialog.ui
+	Settings/ControllerSettingsWindow.cpp
+	Settings/ControllerSettingsWindow.h
+	Settings/ControllerSettingsWindow.ui
 	Settings/ControllerSettingWidgetBinder.h
 	Settings/DebugSettingsWidget.cpp
 	Settings/DebugSettingsWidget.h
@@ -137,9 +138,9 @@ target_sources(pcsx2-qt PRIVATE
 	Settings/HddCreateQt.cpp
 	Settings/HddCreateQt.h
 	Settings/PatchDetailsWidget.ui
-	Settings/SettingsDialog.cpp
-	Settings/SettingsDialog.h
-	Settings/SettingsDialog.ui
+	Settings/SettingsWindow.cpp
+	Settings/SettingsWindow.h
+	Settings/SettingsWindow.ui
 	Settings/USBBindingWidget_DrivingForce.ui
 	Settings/USBBindingWidget_GTForce.ui
 	Settings/USBBindingWidget_GunCon2.ui
@@ -167,6 +168,8 @@ target_sources(pcsx2-qt PRIVATE
 	Debugger/Models/ThreadModel.h
 	Debugger/Models/StackModel.cpp
 	Debugger/Models/StackModel.h
+	Debugger/Models/SavedAddressesModel.cpp
+	Debugger/Models/SavedAddressesModel.h
 	Tools/InputRecording/NewInputRecordingDlg.cpp
 	Tools/InputRecording/NewInputRecordingDlg.h
 	Tools/InputRecording/NewInputRecordingDlg.ui
@@ -179,6 +182,7 @@ target_sources(pcsx2-qt PRIVATE
 file(GLOB TS_FILES ${CMAKE_CURRENT_SOURCE_DIR}/Translations/*.ts)
 
 target_precompile_headers(pcsx2-qt PRIVATE PrecompiledHeader.h)
+set_source_files_properties(PrecompiledHeader.cpp PROPERTIES HEADER_FILE_ONLY TRUE)
 
 target_include_directories(pcsx2-qt PRIVATE
 	${Qt6Gui_PRIVATE_INCLUDE_DIRS}
@@ -193,7 +197,6 @@ target_link_libraries(pcsx2-qt PRIVATE
 	Qt6::Core
 	Qt6::Gui
 	Qt6::Widgets
-	Qt6::Network
 )
 
 # Our Qt builds may have exceptions on, so force them off.
@@ -222,6 +225,7 @@ elseif(APPLE)
 		set_source_files_properties(${QM_FILE} PROPERTIES MACOSX_PACKAGE_LOCATION Resources/translations/)
 	endforeach()
 	copy_base_translations(pcsx2-qt)
+	extract_translation_from_ts(Translations/pcsx2-qt_en.ts source PermissionsDialogMicrophone PCSX2_MICROPHONE_USAGE_DESCRIPTION)
 else()
 	qt_add_lrelease(pcsx2-qt TS_FILES ${TS_FILES} QM_FILES_OUTPUT_VARIABLE QM_FILES)
 	set(QM_OUTPUT_DIR "$<TARGET_FILE_DIR:pcsx2-qt>/translations")

@@ -1,19 +1,5 @@
-/*  PCSX2 - PS2 Emulator for PCs
- *  Copyright (C) 2002-2023  PCSX2 Dev Team
- *
- *  PCSX2 is free software: you can redistribute it and/or modify it under the terms
- *  of the GNU Lesser General Public License as published by the Free Software Found-
- *  ation, either version 3 of the License, or (at your option) any later version.
- *
- *  PCSX2 is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
- *  without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
- *  PURPOSE.  See the GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License along with PCSX2.
- *  If not, see <http://www.gnu.org/licenses/>.
- */
-
-#include "PrecompiledHeader.h"
+// SPDX-FileCopyrightText: 2002-2023 PCSX2 Dev Team
+// SPDX-License-Identifier: LGPL-3.0+
 
 #include "Achievements.h"
 #include "CDVD/CDVD.h"
@@ -33,6 +19,7 @@
 #include "R3000A.h"
 #include "SIO/Sio0.h"
 #include "SIO/Sio2.h"
+#include "SIO/Multitap/MultitapProtocol.h"
 #include "SPU2/spu2.h"
 #include "SaveState.h"
 #include "StateWrapper.h"
@@ -71,7 +58,7 @@ static void PreLoadPrep()
 	// clear protected pages, since we don't want to fault loading EE memory
 	mmap_ResetBlockTracking();
 
-	SysClearExecutionCache();
+	VMManager::Internal::ClearCPUExecutionCaches();
 }
 
 static void PostLoadPrep()
@@ -130,7 +117,7 @@ bool SaveStateBase::FreezeTag(const char* src)
 		return false;
 
 	char tagspace[32];
-	pxAssertDev(std::strlen(src) < (sizeof(tagspace) - 1), "Tag name exceeds the allowed length");
+	pxAssertMsg(std::strlen(src) < (sizeof(tagspace) - 1), "Tag name exceeds the allowed length");
 
 	std::memset(tagspace, 0, sizeof(tagspace));
 	StringUtil::Strlcpy(tagspace, src, sizeof(tagspace));
@@ -217,6 +204,7 @@ bool SaveStateBase::FreezeInternals()
 		return false;
 
 	bool okay = rcntFreeze();
+	okay = okay && memFreeze();
 	okay = okay && gsFreeze();
 	okay = okay && vuMicroFreeze();
 	okay = okay && vuJITFreeze();
@@ -259,6 +247,9 @@ bool SaveStateBase::FreezeInternals()
 
 		okay = okay && g_Sio0.DoState(sw);
 		okay = okay && g_Sio2.DoState(sw);
+		okay = okay && g_MultitapArr.at(0).DoState(sw);
+		okay = okay && g_MultitapArr.at(1).DoState(sw);
+
 		if (!okay || !sw.IsGood())
 			return false;
 
@@ -524,7 +515,6 @@ public:
 
 	virtual bool FreezeIn(zip_file_t* zf) const override
 	{
-		SysClearExecutionCache();
 		return MemorySavestateEntry::FreezeIn(zf);
 	}
 };

@@ -1,19 +1,5 @@
-/*  PCSX2 - PS2 Emulator for PCs
- *  Copyright (C) 2002-2022  PCSX2 Dev Team
- *
- *  PCSX2 is free software: you can redistribute it and/or modify it under the terms
- *  of the GNU Lesser General Public License as published by the Free Software Found-
- *  ation, either version 3 of the License, or (at your option) any later version.
- *
- *  PCSX2 is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
- *  without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
- *  PURPOSE.  See the GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License along with PCSX2.
- *  If not, see <http://www.gnu.org/licenses/>.
- */
-
-#include "PrecompiledHeader.h"
+// SPDX-FileCopyrightText: 2002-2023 PCSX2 Dev Team
+// SPDX-License-Identifier: LGPL-3.0+
 
 #include <QtCore/QAbstractTableModel>
 #include <QtCore/QDebug>
@@ -30,11 +16,20 @@
 #include "MainWindow.h"
 #include "QtHost.h"
 #include "QtUtils.h"
+#include "SettingWidgetBinder.h"
 
-GameListSettingsWidget::GameListSettingsWidget(SettingsDialog* dialog, QWidget* parent)
+GameListSettingsWidget::GameListSettingsWidget(SettingsWindow* dialog, QWidget* parent)
 	: QWidget(parent)
 {
+	SettingsInterface* sif = dialog->getSettingsInterface();
+
 	m_ui.setupUi(this);
+
+	SettingWidgetBinder::BindWidgetToBoolSetting(sif, m_ui.preferEnglishGameList, "UI", "PreferEnglishGameList", false);
+	connect(m_ui.preferEnglishGameList, &QCheckBox::stateChanged, [this]{ emit preferEnglishGameListChanged(); });
+
+	dialog->registerWidgetHelp(m_ui.preferEnglishGameList, tr("Prefer English Titles"), tr("Unchecked"),
+		tr("For games with both a title in the game's native language and one in English, prefer the English title."));
 
 	m_ui.searchDirectoryList->setSelectionMode(QAbstractItemView::SingleSelection);
 	m_ui.searchDirectoryList->setSelectionBehavior(QAbstractItemView::SelectRows);
@@ -84,11 +79,22 @@ void GameListSettingsWidget::refreshExclusionList()
 		m_ui.excludedPaths->addItem(QString::fromStdString(path));
 }
 
-void GameListSettingsWidget::resizeEvent(QResizeEvent* event)
+bool GameListSettingsWidget::event(QEvent* event)
 {
-	QWidget::resizeEvent(event);
+	bool res = QWidget::event(event);
 
-	QtUtils::ResizeColumnsForTableView(m_ui.searchDirectoryList, {-1, 100});
+	switch (event->type())
+	{
+		case QEvent::LayoutRequest:
+		case QEvent::Resize:
+			QtUtils::ResizeColumnsForTableView(m_ui.searchDirectoryList, {-1, 100});
+			break;
+
+		default:
+			break;
+	}
+
+	return res;
 }
 
 void GameListSettingsWidget::addPathToTable(const std::string& path, bool recursive)

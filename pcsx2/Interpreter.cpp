@@ -1,20 +1,5 @@
-/*  PCSX2 - PS2 Emulator for PCs
- *  Copyright (C) 2002-2023  PCSX2 Dev Team
- *
- *  PCSX2 is free software: you can redistribute it and/or modify it under the terms
- *  of the GNU Lesser General Public License as published by the Free Software Found-
- *  ation, either version 3 of the License, or (at your option) any later version.
- *
- *  PCSX2 is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
- *  without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
- *  PURPOSE.  See the GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License along with PCSX2.
- *  If not, see <http://www.gnu.org/licenses/>.
- */
-
-
-#include "PrecompiledHeader.h"
+// SPDX-FileCopyrightText: 2002-2023 PCSX2 Dev Team
+// SPDX-License-Identifier: LGPL-3.0+
 
 #include "Common.h"
 #include "R5900OpcodeTables.h"
@@ -36,8 +21,44 @@ static u32 cpuBlockCycles = 0;		// 3 bit fixed point version of cycle count
 static std::string disOut;
 static bool intExitExecution = false;
 static fastjmp_buf intJmpBuf;
+static u32 intLastBranchTo;
 
 static void intEventTest();
+
+void intUpdateCPUCycles()
+{
+	const bool lowcycles = (cpuBlockCycles <= 40);
+	const s8 cyclerate = EmuConfig.Speedhacks.EECycleRate;
+	u32 scale_cycles = 0;
+
+	if (cyclerate == 0 || lowcycles || cyclerate < -99 || cyclerate > 3)
+		scale_cycles = cpuBlockCycles >> 3;
+
+	else if (cyclerate > 1)
+		scale_cycles = cpuBlockCycles >> (2 + cyclerate);
+
+	else if (cyclerate == 1)
+		scale_cycles = (cpuBlockCycles >> 3) / 1.3f; // Adds a mild 30% increase in clockspeed for value 1.
+
+	else if (cyclerate == -1) // the mildest value which is also used by the "balanced" preset.
+		// These values were manually tuned to yield mild speedup with high compatibility
+		scale_cycles = (cpuBlockCycles <= 80 || cpuBlockCycles > 168 ? 5 : 7) * cpuBlockCycles / 32;
+
+	else
+		scale_cycles = ((5 + (-2 * (cyclerate + 1))) * cpuBlockCycles) >> 5;
+
+	// Ensure block cycle count is never less than 1.
+	cpuRegs.cycle += (scale_cycles < 1) ? 1 : scale_cycles;
+
+	if (cyclerate > 1)
+	{
+		cpuBlockCycles &= (0x1 << (cyclerate + 2)) - 1;
+	}
+	else
+	{
+		cpuBlockCycles &= 0x7;
+	}
+}
 
 // These macros are used to assemble the repassembler functions
 
@@ -54,7 +75,7 @@ void intBreakpoint(bool memcheck)
 			return;
 	}
 
-	CBreakPoints::SetBreakpointTriggered(true);
+	CBreakPoints::SetBreakpointTriggered(true, BREAKPOINT_EE);
 	VMManager::SetPaused(true);
 	Cpu->ExitExecution();
 }
@@ -178,7 +199,7 @@ static void execI()
 #endif
 
 
-	cpuBlockCycles += opcode.cycles;
+	cpuBlockCycles += opcode.cycles * (2 - ((cpuRegs.CP0.n.Config >> 18) & 0x1));
 
 	opcode.interpret();
 }
@@ -193,6 +214,39 @@ static __fi void _doBranch_shared(u32 tar)
 
 	if( cpuRegs.branch != 0 )
 	{
+		if (Cpu == &intCpu)
+		{
+			if (intLastBranchTo == tar && EmuConfig.Speedhacks.WaitLoop)
+			{
+				intUpdateCPUCycles();
+				bool can_skip = true;
+				if (tar != 0x81fc0)
+				{
+					if ((cpuRegs.pc - tar) < (4 * 10))
+					{
+						for (u32 i = tar; i < cpuRegs.pc; i += 4)
+						{
+							if (PSM(i) != 0)
+							{
+								can_skip = false;
+								break;
+							}
+						}
+					}
+					else
+						can_skip = false;
+				}
+
+				if (can_skip)
+				{
+					if (static_cast<s32>(cpuRegs.nextEventCycle - cpuRegs.cycle) > 0)
+						cpuRegs.cycle = cpuRegs.nextEventCycle;
+					else
+						cpuRegs.nextEventCycle = cpuRegs.cycle;
+				}
+			}
+		}
+		intLastBranchTo = tar;
 		cpuRegs.pc = tar;
 		cpuRegs.branch = 0;
 	}
@@ -201,8 +255,7 @@ static __fi void _doBranch_shared(u32 tar)
 static void doBranch( u32 target )
 {
 	_doBranch_shared( target );
-	cpuRegs.cycle += cpuBlockCycles >> 3;
-	cpuBlockCycles &= (1<<3)-1;
+	intUpdateCPUCycles();
 	intEventTest();
 }
 
@@ -213,8 +266,7 @@ void intDoBranch(u32 target)
 
 	if( Cpu == &intCpu )
 	{
-		cpuRegs.cycle += cpuBlockCycles >> 3;
-		cpuBlockCycles &= (1<<3)-1;
+		intUpdateCPUCycles();
 		intEventTest();
 	}
 }

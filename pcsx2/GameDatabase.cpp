@@ -1,19 +1,5 @@
-/*  PCSX2 - PS2 Emulator for PCs
- *  Copyright (C) 2002-2023 PCSX2 Dev Team
- *
- *  PCSX2 is free software: you can redistribute it and/or modify it under the terms
- *  of the GNU Lesser General Public License as published by the Free Software Found-
- *  ation, either version 3 of the License, or (at your option) any later version.
- *
- *  PCSX2 is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
- *  without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
- *  PURPOSE.  See the GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License along with PCSX2.
- *  If not, see <http://www.gnu.org/licenses/>.
- */
-
-#include "PrecompiledHeader.h"
+// SPDX-FileCopyrightText: 2002-2023 PCSX2 Dev Team
+// SPDX-License-Identifier: LGPL-3.0+
 
 #include "GameDatabase.h"
 #include "GS/GS.h"
@@ -21,6 +7,8 @@
 #include "IconsFontAwesome5.h"
 #include "vtlb.h"
 
+#include "common/Console.h"
+#include "common/EnumOps.h"
 #include "common/Error.h"
 #include "common/FileSystem.h"
 #include "common/Path.h"
@@ -103,6 +91,14 @@ void GameDatabase::parseAndInsert(const std::string_view& serial, const c4::yml:
 	{
 		node["name"] >> gameEntry.name;
 	}
+	if (node.has_child("name-sort"))
+	{
+		node["name-sort"] >> gameEntry.name_sort;
+	}
+	if (node.has_child("name-en"))
+	{
+		node["name-en"] >> gameEntry.name_en;
+	}
 	if (node.has_child("region"))
 	{
 		node["region"] >> gameEntry.region;
@@ -119,26 +115,42 @@ void GameDatabase::parseAndInsert(const std::string_view& serial, const c4::yml:
 		{
 			int eeVal = -1;
 			node["roundModes"]["eeRoundMode"] >> eeVal;
-			gameEntry.eeRoundMode = static_cast<GameDatabaseSchema::RoundMode>(eeVal);
+			if (eeVal >= 0 && eeVal < static_cast<int>(FPRoundMode::MaxCount))
+				gameEntry.eeRoundMode = static_cast<FPRoundMode>(eeVal);
+			else
+				Console.Error(fmt::format("[GameDB] Invalid EE round mode '{}', specified for serial: '{}'.", eeVal, serial));
 		}
 		if (node["roundModes"].has_child("vuRoundMode"))
 		{
 			int vuVal = -1;
 			node["roundModes"]["vuRoundMode"] >> vuVal;
-			gameEntry.vu0RoundMode = static_cast<GameDatabaseSchema::RoundMode>(vuVal);
-			gameEntry.vu1RoundMode = static_cast<GameDatabaseSchema::RoundMode>(vuVal);
+			if (vuVal >= 0 && vuVal < static_cast<int>(FPRoundMode::MaxCount))
+			{
+				gameEntry.vu0RoundMode = static_cast<FPRoundMode>(vuVal);
+				gameEntry.vu1RoundMode = static_cast<FPRoundMode>(vuVal);
+			}
+			else
+			{
+				Console.Error(fmt::format("[GameDB] Invalid VU round mode '{}', specified for serial: '{}'.", vuVal, serial));
+			}
 		}
 		if (node["roundModes"].has_child("vu0RoundMode"))
 		{
 			int vuVal = -1;
 			node["roundModes"]["vu0RoundMode"] >> vuVal;
-			gameEntry.vu0RoundMode = static_cast<GameDatabaseSchema::RoundMode>(vuVal);
+			if (vuVal >= 0 && vuVal < static_cast<int>(FPRoundMode::MaxCount))
+				gameEntry.vu0RoundMode = static_cast<FPRoundMode>(vuVal);
+			else
+				Console.Error(fmt::format("[GameDB] Invalid VU0 round mode '{}', specified for serial: '{}'.", vuVal, serial));
 		}
 		if (node["roundModes"].has_child("vu1RoundMode"))
 		{
 			int vuVal = -1;
 			node["roundModes"]["vu1RoundMode"] >> vuVal;
-			gameEntry.vu1RoundMode = static_cast<GameDatabaseSchema::RoundMode>(vuVal);
+			if (vuVal >= 0 && vuVal < static_cast<int>(FPRoundMode::MaxCount))
+				gameEntry.vu1RoundMode = static_cast<FPRoundMode>(vuVal);
+			else
+				Console.Error(fmt::format("[GameDB] Invalid VU1 round mode '{}', specified for serial: '{}'.", vuVal, serial));
 		}
 	}
 	if (node.has_child("clampModes"))
@@ -179,12 +191,12 @@ void GameDatabase::parseAndInsert(const std::string_view& serial, const c4::yml:
 			auto fix = std::string(n.val().str, n.val().len);
 
 			// Enum values don't end with Hack, but gamedb does, so remove it before comparing.
-			if (StringUtil::EndsWith(fix, "Hack"))
+			if (fix.ends_with("Hack"))
 			{
 				fix.erase(fix.size() - 4);
-				for (GamefixId id = GamefixId_FIRST; id < pxEnumEnd; ++id)
+				for (GamefixId id = GamefixId_FIRST; id < GamefixId_COUNT; id = static_cast<GamefixId>(enum_cast(id) + 1))
 				{
-					if (fix.compare(EnumToString(id)) == 0 &&
+					if (fix.compare(Pcsx2Config::GamefixOptions::GetGameFixName(id)) == 0 &&
 						std::find(gameEntry.gameFixes.begin(), gameEntry.gameFixes.end(), id) == gameEntry.gameFixes.end())
 					{
 						gameEntry.gameFixes.push_back(id);
@@ -332,6 +344,13 @@ void GameDatabase::parseAndInsert(const std::string_view& serial, const c4::yml:
 	s_game_db.emplace(std::move(serial), std::move(gameEntry));
 }
 
+static const char* s_round_modes[static_cast<u32>(FPRoundMode::MaxCount)] = {
+	"Nearest",
+	"NegativeInfinity",
+	"PositiveInfinity",
+	"Chop"
+};
+
 static const char* s_gs_hw_fix_names[] = {
 	"autoFlush",
 	"cpuFramebufferConversion",
@@ -415,48 +434,42 @@ void GameDatabaseSchema::GameEntry::applyGameFixes(Pcsx2Config& config, bool app
 	if (!applyAuto)
 		Console.Warning("[GameDB] Game Fixes are disabled");
 
-	if (eeRoundMode != GameDatabaseSchema::RoundMode::Undefined)
+	if (eeRoundMode < FPRoundMode::MaxCount)
 	{
-		const SSE_RoundMode eeRM = (SSE_RoundMode)enum_cast(eeRoundMode);
-		if (EnumIsValid(eeRM))
+		if (applyAuto)
 		{
-			if (applyAuto)
-			{
-				Console.WriteLn("(GameDB) Changing EE/FPU roundmode to %d [%s]", eeRM, EnumToString(eeRM));
-				config.Cpu.sseMXCSR.SetRoundMode(eeRM);
-			}
-			else
-				Console.Warning("[GameDB] Skipping changing EE/FPU roundmode to %d [%s]", eeRM, EnumToString(eeRM));
+			Console.WriteLn("(GameDB) Changing EE/FPU roundmode to %d [%s]", eeRoundMode, s_round_modes[static_cast<u8>(eeRoundMode)]);
+			config.Cpu.FPUFPCR.SetRoundMode(eeRoundMode);
+		}
+		else
+		{
+			Console.Warning("[GameDB] Skipping changing EE/FPU roundmode to %d [%s]", eeRoundMode, s_round_modes[static_cast<u8>(eeRoundMode)]);
 		}
 	}
 
-	if (vu0RoundMode != GameDatabaseSchema::RoundMode::Undefined)
+	if (vu0RoundMode < FPRoundMode::MaxCount)
 	{
-		const SSE_RoundMode vuRM = (SSE_RoundMode)enum_cast(vu0RoundMode);
-		if (EnumIsValid(vuRM))
+		if (applyAuto)
 		{
-			if (applyAuto)
-			{
-				Console.WriteLn("(GameDB) Changing VU0 roundmode to %d [%s]", vuRM, EnumToString(vuRM));
-				config.Cpu.sseVU0MXCSR.SetRoundMode(vuRM);
-			}
-			else
-				Console.Warning("[GameDB] Skipping changing VU0 roundmode to %d [%s]", vuRM, EnumToString(vuRM));
+			Console.WriteLn("(GameDB) Changing VU0 roundmode to %d [%s]", vu0RoundMode, s_round_modes[static_cast<u8>(vu0RoundMode)]);
+			config.Cpu.VU0FPCR.SetRoundMode(vu0RoundMode);
+		}
+		else
+		{
+			Console.Warning("[GameDB] Skipping changing VU0 roundmode to %d [%s]", vu0RoundMode, s_round_modes[static_cast<u8>(vu0RoundMode)]);
 		}
 	}
 
-	if (vu1RoundMode != GameDatabaseSchema::RoundMode::Undefined)
+	if (vu1RoundMode < FPRoundMode::MaxCount)
 	{
-		const SSE_RoundMode vuRM = (SSE_RoundMode)enum_cast(vu1RoundMode);
-		if (EnumIsValid(vuRM))
+		if (applyAuto)
 		{
-			if (applyAuto)
-			{
-				Console.WriteLn("(GameDB) Changing VU1 roundmode to %d [%s]", vuRM, EnumToString(vuRM));
-				config.Cpu.sseVU1MXCSR.SetRoundMode(vuRM);
-			}
-			else
-				Console.Warning("[GameDB] Skipping changing VU1 roundmode to %d [%s]", vuRM, EnumToString(vuRM));
+			Console.WriteLn("(GameDB) Changing VU1 roundmode to %d [%s]", vu1RoundMode, s_round_modes[static_cast<u8>(vu1RoundMode)]);
+			config.Cpu.VU1FPCR.SetRoundMode(vu1RoundMode);
+		}
+		else
+		{
+			Console.Warning("[GameDB] Skipping changing VU1 roundmode to %d [%s]", vu1RoundMode, s_round_modes[static_cast<u8>(vu1RoundMode)]);
 		}
 	}
 
@@ -523,12 +536,12 @@ void GameDatabaseSchema::GameEntry::applyGameFixes(Pcsx2Config& config, bool app
 	{
 		if (!applyAuto)
 		{
-			Console.Warning("[GameDB] Skipping Gamefix: %s", EnumToString(id));
+			Console.Warning("[GameDB] Skipping Gamefix: %s", Pcsx2Config::GamefixOptions::GetGameFixName(id));
 			continue;
 		}
 		// if the fix is present, it is said to be enabled
 		config.Gamefixes.Set(id, true);
-		Console.WriteLn("(GameDB) Enabled Gamefix: %s", EnumToString(id));
+		Console.WriteLn("(GameDB) Enabled Gamefix: %s", Pcsx2Config::GamefixOptions::GetGameFixName(id));
 
 		// The LUT is only used for 1 game so we allocate it only when the gamefix is enabled (save 4MB)
 		if (id == Fix_GoemonTlbMiss && true)
@@ -598,7 +611,7 @@ bool GameDatabaseSchema::GameEntry::configMatchesHWFix(const Pcsx2Config::GSOpti
 			return (config.SkipDrawEnd == value);
 
 		case GSHWFixId::HalfPixelOffset:
-			return (config.UpscaleMultiplier <= 1.0f || config.UserHacks_HalfPixelOffset == value);
+			return (config.UpscaleMultiplier <= 1.0f || config.UserHacks_HalfPixelOffset == static_cast<GSHalfPixelOffset>(value));
 
 		case GSHWFixId::RoundSprite:
 			return (config.UpscaleMultiplier <= 1.0f || config.UserHacks_RoundSprite == value);
@@ -772,8 +785,11 @@ void GameDatabaseSchema::GameEntry::applyGSHardwareFixes(Pcsx2Config::GSOptions&
 				break;
 
 			case GSHWFixId::HalfPixelOffset:
-				config.UserHacks_HalfPixelOffset = value;
-				break;
+			{
+				if (value >= 0 && value < static_cast<int>(GSHalfPixelOffset::MaxCount))
+					config.UserHacks_HalfPixelOffset = static_cast<GSHalfPixelOffset>(value);
+			}
+			break;
 
 			case GSHWFixId::RoundSprite:
 				config.UserHacks_RoundSprite = value;
@@ -912,7 +928,7 @@ void GameDatabase::initDatabase()
 		Console.Error(fmt::format("[GameDB YAML] Internal Parsing error: {}", std::string_view(msg, msg_size)));
 	});
 
-	auto buf = Host::ReadResourceFileToString(GAMEDB_YAML_FILE_NAME);
+	auto buf = FileSystem::ReadFileToString(Path::Combine(EmuFolders::Resources, GAMEDB_YAML_FILE_NAME).c_str());
 	if (!buf.has_value())
 	{
 		Console.Error("[GameDB] Unable to open GameDB file, file does not exist.");
@@ -1082,7 +1098,7 @@ bool GameDatabase::loadHashDatabase()
 
 	Common::Timer load_timer;
 
-	auto buf = Host::ReadResourceFileToString(HASHDB_YAML_FILE_NAME);
+	auto buf = FileSystem::ReadFileToString(Path::Combine(EmuFolders::Resources, HASHDB_YAML_FILE_NAME).c_str());
 	if (!buf.has_value())
 	{
 		Console.Error("[GameDB] Unable to open hash database file, file does not exist.");
@@ -1172,7 +1188,7 @@ const GameDatabase::HashDatabaseEntry* GameDatabase::lookupHash(
 		if (audio_iter != s_track_hash_to_entry_map.end())
 		{
 			fmt::format_to(std::back_inserter(*match_error),
-				TRANSLATE_FS("GameDatabase", "Track {} with hash {} is not found in database.\n"), track + 1,
+				TRANSLATE_FS("GameDatabase", "Track {0} with hash {1} is not found in database.\n"), track + 1,
 				tracks[track].toString());
 			tracks_matched[track] = false;
 			all_okay = false;
@@ -1183,7 +1199,7 @@ const GameDatabase::HashDatabaseEntry* GameDatabase::lookupHash(
 		if (audio_iter->second != data_iter->second)
 		{
 			fmt::format_to(std::back_inserter(*match_error),
-				TRANSLATE_FS("GameDatabase", "Track {} with hash {} is for a different game ({}).\n"), track + 1,
+				TRANSLATE_FS("GameDatabase", "Track {0} with hash {1} is for a different game ({2}).\n"), track + 1,
 				tracks[track].toString(), s_hash_database[audio_iter->second].name);
 			tracks_matched[track] = false;
 			all_okay = false;
@@ -1194,7 +1210,7 @@ const GameDatabase::HashDatabaseEntry* GameDatabase::lookupHash(
 		if (getTrackIndex(candidate->tracks.data(), candidate->tracks.size(), tracks[track]) != track)
 		{
 			fmt::format_to(std::back_inserter(*match_error),
-				TRANSLATE_FS("GameDatabase", "Track {} with hash {} does not match database track.\n"), track + 1,
+				TRANSLATE_FS("GameDatabase", "Track {0} with hash {1} does not match database track.\n"), track + 1,
 				tracks[track].toString());
 			tracks_matched[track] = false;
 			all_okay = false;

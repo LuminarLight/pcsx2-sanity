@@ -1,22 +1,9 @@
-/*  PCSX2 - PS2 Emulator for PCs
- *  Copyright (C) 2002-2023  PCSX2 Dev Team
- *
- *  PCSX2 is free software: you can redistribute it and/or modify it under the terms
- *  of the GNU Lesser General Public License as published by the Free Software Found-
- *  ation, either version 3 of the License, or (at your option) any later version.
- *
- *  PCSX2 is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
- *  without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
- *  PURPOSE.  See the GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License along with PCSX2.
- *  If not, see <http://www.gnu.org/licenses/>.
- */
-
-#include "PrecompiledHeader.h"
+// SPDX-FileCopyrightText: 2002-2023 PCSX2 Dev Team
+// SPDX-License-Identifier: LGPL-3.0+
 
 #define _PC_ // disables MIPS opcode macros.
 
+#include "common/Assertions.h"
 #include "common/ByteSwap.h"
 #include "common/FileSystem.h"
 #include "common/Path.h"
@@ -157,9 +144,13 @@ namespace Patch
 	static std::vector<std::string> FindPatchFilesOnDisk(
 		const std::string_view& serial, u32 crc, bool cheats, bool all_crcs);
 
+	static bool ContainsPatchName(const PatchInfoList& patches, const std::string_view patchName);
+	static bool ContainsPatchName(const PatchList& patches, const std::string_view patchName);
+
 	template <typename F>
 	static void EnumeratePnachFiles(const std::string_view& serial, u32 crc, bool cheats, bool for_ui, const F& f);
 
+	static bool PatchStringHasUnlabelledPatch(const std::string& pnach_data);
 	static void ExtractPatchInfo(PatchInfoList* dst, const std::string& pnach_data, u32* num_unlabelled_patches);
 	static void ReloadEnabledLists();
 	static u32 EnablePatches(const PatchList& patches, const EnablePatchList& enable_list);
@@ -214,6 +205,13 @@ void Patch::TrimPatchLine(std::string& buffer)
 		buffer.erase(pos);
 }
 
+bool Patch::ContainsPatchName(const PatchList& patch_list, const std::string_view patch_name)
+{
+	return std::find_if(patch_list.begin(), patch_list.end(), [&patch_name](const PatchGroup& patch) {
+		return patch.name == patch_name;
+	}) != patch_list.end();
+}
+
 int Patch::PatchTableExecute(PatchGroup* group, const std::string_view& lhs, const std::string_view& rhs,
 	const std::span<const PatchTextTable>& Table)
 {
@@ -247,6 +245,19 @@ u32 Patch::LoadPatchesFromString(PatchList* patch_list, const std::string& patch
 	const size_t before = patch_list->size();
 
 	PatchGroup current_patch_group;
+	const auto add_current_patch = [patch_list, &current_patch_group]() {
+		// Don't show patches with duplicate names, prefer the first loaded.
+		if (!ContainsPatchName(*patch_list, current_patch_group.name))
+		{
+			patch_list->push_back(std::move(current_patch_group));
+		}
+		else
+		{
+			Console.WriteLn(Color_Gray, fmt::format(
+				"Patch: Skipped loading patch '{}' since a patch with a duplicate name was already loaded.",
+				current_patch_group.name));
+		}
+	};
 
 	std::istringstream ss(patch_file);
 	std::string line;
@@ -266,7 +277,7 @@ u32 Patch::LoadPatchesFromString(PatchList* patch_list, const std::string& patch
 
 			if (!current_patch_group.name.empty() || !current_patch_group.patches.empty())
 			{
-				patch_list->push_back(std::move(current_patch_group));
+				add_current_patch();
 				current_patch_group = {};
 			}
 
@@ -278,7 +289,7 @@ u32 Patch::LoadPatchesFromString(PatchList* patch_list, const std::string& patch
 	}
 
 	if (!current_patch_group.name.empty() || !current_patch_group.patches.empty())
-		patch_list->push_back(std::move(current_patch_group));
+		add_current_patch();
 
 	return static_cast<u32>(patch_list->size() - before);
 }
@@ -349,28 +360,43 @@ std::vector<std::string> Patch::FindPatchFilesOnDisk(const std::string_view& ser
 	return ret;
 }
 
+bool Patch::ContainsPatchName(const PatchInfoList& patches, const std::string_view patchName)
+{
+	return std::find_if(patches.begin(), patches.end(), [&patchName](const PatchInfo& patch) {
+		return patch.name == patchName;
+	}) != patches.end();
+}
+
 template <typename F>
 void Patch::EnumeratePnachFiles(const std::string_view& serial, u32 crc, bool cheats, bool for_ui, const F& f)
 {
 	// Prefer files on disk over the zip.
 	std::vector<std::string> disk_patch_files;
-	if (for_ui || !Achievements::ChallengeModeActive())
+	if (for_ui || !Achievements::IsHardcoreModeActive())
 		disk_patch_files = FindPatchFilesOnDisk(serial, crc, cheats, for_ui);
 
+	bool unlabeled_patch_found = false;
 	if (!disk_patch_files.empty())
 	{
 		for (const std::string& file : disk_patch_files)
 		{
 			std::optional<std::string> contents = FileSystem::ReadFileToString(file.c_str());
 			if (contents.has_value())
-				f(std::move(file), std::move(contents.value()));
-		}
+			{
+				// Catch if unlabeled patches are being loaded so we can disable ZIP patches to prevent conflicts.
+				if (PatchStringHasUnlabelledPatch(contents.value()))
+				{
+					unlabeled_patch_found = true;
+					Console.WriteLn(fmt::format("Patch: Disabling any bundled '{}' patches due to unlabeled patch being loaded. (To avoid conflicts)", PATCHES_ZIP_NAME));
+				}
 
-		return;
+				f(std::move(file), std::move(contents.value()));
+			}
+		}
 	}
 
 	// Otherwise fall back to the zip.
-	if (cheats || !OpenPatchesZip())
+	if (cheats || unlabeled_patch_found || !OpenPatchesZip())
 		return;
 
 	// Prefer filename with serial.
@@ -383,6 +409,39 @@ void Patch::EnumeratePnachFiles(const std::string_view& serial, u32 crc, bool ch
 	}
 	if (pnach_data.has_value())
 		f(std::move(zip_filename), std::move(pnach_data.value()));
+}
+
+bool Patch::PatchStringHasUnlabelledPatch(const std::string& pnach_data)
+{
+	std::istringstream ss(pnach_data);
+	std::string line;
+	bool foundPatch = false, foundLabel = false;
+
+	while (std::getline(ss, line))
+	{
+		TrimPatchLine(line);
+		if (line.empty())
+			continue;
+
+		if (line.length() > 2 && line.front() == '[' && line.back() == ']')
+		{
+			if (!foundPatch)
+				return false;
+			foundLabel = true;
+			continue;
+		}
+
+		std::string_view key, value;
+		StringUtil::ParseAssignmentString(line, &key, &value);
+		if (key == "patch")
+		{
+			if (!foundLabel)
+				return true;
+
+			foundPatch = true;
+		}
+	}
+	return false;
 }
 
 void Patch::ExtractPatchInfo(PatchInfoList* dst, const std::string& pnach_data, u32* num_unlabelled_patches)
@@ -405,7 +464,15 @@ void Patch::ExtractPatchInfo(PatchInfoList* dst, const std::string& pnach_data, 
 				if (std::none_of(dst->begin(), dst->end(),
 						[&current_patch](const PatchInfo& pi) { return (pi.name == current_patch.name); }))
 				{
-					dst->push_back(std::move(current_patch));
+					// Don't show patches with duplicate names, prefer the first loaded.
+					if (!ContainsPatchName(*dst, current_patch.name))
+					{
+						dst->push_back(std::move(current_patch));
+					}
+					else
+					{
+						Console.WriteLn(Color_Gray, fmt::format("Patch: Skipped reading patch '{}' since a patch with a duplicate name was already loaded.", current_patch.name));
+					}
 				}
 				current_patch = {};
 			}
@@ -456,14 +523,14 @@ std::string_view Patch::PatchInfo::GetNameParentPart() const
 	return ret;
 }
 
-Patch::PatchInfoList Patch::GetPatchInfo(const std::string_view& serial, u32 crc, bool cheats, u32* num_unlabelled_patches)
+Patch::PatchInfoList Patch::GetPatchInfo(const std::string_view& serial, u32 crc, bool cheats, bool showAllCRCS, u32* num_unlabelled_patches)
 {
 	PatchInfoList ret;
 
 	if (num_unlabelled_patches)
 		*num_unlabelled_patches = 0;
 
-	EnumeratePnachFiles(serial, crc, cheats, true,
+	EnumeratePnachFiles(serial, crc, cheats, showAllCRCS,
 		[&ret, num_unlabelled_patches](const std::string& filename, const std::string& pnach_data) {
 			ExtractPatchInfo(&ret, pnach_data, num_unlabelled_patches);
 		});
@@ -478,7 +545,7 @@ std::string Patch::GetPnachFilename(const std::string_view& serial, u32 crc, boo
 
 void Patch::ReloadEnabledLists()
 {
-	if (EmuConfig.EnableCheats && !Achievements::ChallengeModeActive())
+	if (EmuConfig.EnableCheats && !Achievements::IsHardcoreModeActive())
 		s_enabled_cheats = Host::GetStringListSetting(CHEATS_CONFIG_SECTION, PATCH_ENABLE_CONFIG_KEY);
 	else
 		s_enabled_cheats = {};

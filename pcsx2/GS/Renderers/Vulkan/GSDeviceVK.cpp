@@ -1,19 +1,5 @@
-/*  PCSX2 - PS2 Emulator for PCs
- *  Copyright (C) 2002-2021 PCSX2 Dev Team
- *
- *  PCSX2 is free software: you can redistribute it and/or modify it under the terms
- *  of the GNU Lesser General Public License as published by the Free Software Found-
- *  ation, either version 3 of the License, or (at your option) any later version.
- *
- *  PCSX2 is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
- *  without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
- *  PURPOSE.  See the GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License along with PCSX2.
- *  If not, see <http://www.gnu.org/licenses/>.
- */
-
-#include "PrecompiledHeader.h"
+// SPDX-FileCopyrightText: 2002-2023 PCSX2 Dev Team
+// SPDX-License-Identifier: LGPL-3.0+
 
 #include "GS/GS.h"
 #include "GS/GSGL.h"
@@ -26,7 +12,9 @@
 
 #include "Host.h"
 
+#include "common/Console.h"
 #include "common/BitUtils.h"
+#include "common/HostSys.h"
 #include "common/Path.h"
 #include "common/ScopedGuard.h"
 
@@ -89,6 +77,12 @@ static constexpr VkClearValue s_present_clear_color = {{{0.0f, 0.0f, 0.0f, 1.0f}
 
 // We need to synchronize instance creation because of adapter enumeration from the UI thread.
 static std::mutex s_instance_mutex;
+
+// Device extensions that are required for PCSX2.
+static constexpr const char* s_required_device_extensions[] = {
+	VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME,
+	VK_KHR_SHADER_DRAW_PARAMETERS_EXTENSION_NAME,
+};
 
 GSDeviceVK::GSDeviceVK()
 {
@@ -168,9 +162,9 @@ bool GSDeviceVK::SelectInstanceExtensions(ExtensionList* extension_list, const W
 	res = vkEnumerateInstanceExtensionProperties(nullptr, &extension_count, available_extension_list.data());
 	pxAssert(res == VK_SUCCESS);
 
-	auto SupportsExtension = [&](const char* name, bool required) {
+	auto SupportsExtension = [&available_extension_list, extension_list](const char* name, bool required) {
 		if (std::find_if(available_extension_list.begin(), available_extension_list.end(),
-				[&](const VkExtensionProperties& properties) { return !strcmp(name, properties.extensionName); }) !=
+				[name](const VkExtensionProperties& properties) { return !strcmp(name, properties.extensionName); }) !=
 			available_extension_list.end())
 		{
 			DevCon.WriteLn("Enabling extension: %s", name);
@@ -250,6 +244,47 @@ GSDeviceVK::GPUList GSDeviceVK::EnumerateGPUs(VkInstance instance)
 		VkPhysicalDeviceProperties props = {};
 		vkGetPhysicalDeviceProperties(device, &props);
 
+		// Skip GPUs which don't support Vulkan 1.1, since we won't be able to create a device with them anyway.
+		if (VK_API_VERSION_VARIANT(props.apiVersion) == 0 && VK_API_VERSION_MAJOR(props.apiVersion) <= 1 &&
+			VK_API_VERSION_MINOR(props.apiVersion) < 1)
+		{
+			Console.Warning(fmt::format("Ignoring Vulkan GPU '{}' because it only claims support for Vulkan {}.{}.{}",
+				props.deviceName, VK_API_VERSION_MAJOR(props.apiVersion), VK_API_VERSION_MINOR(props.apiVersion),
+				VK_API_VERSION_PATCH(props.apiVersion)));
+			continue;
+		}
+
+		// Query the extension list to ensure that we don't include GPUs that are missing the extensions we require.
+		u32 extension_count = 0;
+		res = vkEnumerateDeviceExtensionProperties(device, nullptr, &extension_count, nullptr);
+		if (res != VK_SUCCESS)
+		{
+			Console.Warning(fmt::format("Ignoring Vulkan GPU '{}' because vkEnumerateInstanceExtensionProperties() failed: ",
+				props.deviceName, Vulkan::VkResultToString(res)));
+			continue;
+		}
+
+		std::vector<VkExtensionProperties> available_extension_list(extension_count);
+		if (extension_count > 0)
+		{
+			res = vkEnumerateDeviceExtensionProperties(device, nullptr, &extension_count, available_extension_list.data());
+			pxAssert(res == VK_SUCCESS);
+		}
+		bool has_missing_extension = false;
+		for (const char* required_extension_name : s_required_device_extensions)
+		{
+			if (std::find_if(available_extension_list.begin(), available_extension_list.end(), [required_extension_name](const VkExtensionProperties& ext) {
+					return (std::strcmp(required_extension_name, ext.extensionName) == 0);
+			}) == available_extension_list.end())
+			{
+				Console.Warning(fmt::format("Ignoring Vulkan GPU '{}' because is is missing required extension {}",
+					props.deviceName, required_extension_name));
+				has_missing_extension = true;
+			}
+		}
+		if (has_missing_extension)
+			continue;
+
 		std::string gpu_name = props.deviceName;
 
 		// handle duplicate adapter names
@@ -294,13 +329,13 @@ bool GSDeviceVK::SelectDeviceExtensions(ExtensionList* extension_list, bool enab
 		m_physical_device, nullptr, &extension_count, available_extension_list.data());
 	pxAssert(res == VK_SUCCESS);
 
-	auto SupportsExtension = [&](const char* name, bool required) {
+	auto SupportsExtension = [&available_extension_list, extension_list](const char* name, bool required) {
 		if (std::find_if(available_extension_list.begin(), available_extension_list.end(),
-				[&](const VkExtensionProperties& properties) { return !strcmp(name, properties.extensionName); }) !=
+				[name](const VkExtensionProperties& properties) { return !strcmp(name, properties.extensionName); }) !=
 			available_extension_list.end())
 		{
 			if (std::none_of(extension_list->begin(), extension_list->end(),
-					[&](const char* existing_name) { return (std::strcmp(existing_name, name) == 0); }))
+					[name](const char* existing_name) { return (std::strcmp(existing_name, name) == 0); }))
 			{
 				DevCon.WriteLn("Enabling extension: %s", name);
 				extension_list->push_back(name);
@@ -319,12 +354,19 @@ bool GSDeviceVK::SelectDeviceExtensions(ExtensionList* extension_list, bool enab
 		return false;
 
 	// Required extensions.
-	if (!SupportsExtension(VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME, true) ||
-		!SupportsExtension(VK_EXT_LINE_RASTERIZATION_EXTENSION_NAME, true) ||
-		!SupportsExtension(VK_KHR_SHADER_DRAW_PARAMETERS_EXTENSION_NAME, true))
+	for (const char* extension_name : s_required_device_extensions)
 	{
-		return false;
+		if (!SupportsExtension(extension_name, true))
+			return false;
 	}
+
+	// MoltenVK does not support VK_EXT_line_rasterization. We want it for other platforms,
+	// but on Mac, the implicit line rasterization apparently matches Bresenham anyway.
+#ifdef __APPLE__
+	static constexpr bool require_line_rasterization = false;
+#else
+	static constexpr bool require_line_rasterization = true;
+#endif
 
 	m_optional_extensions.vk_ext_provoking_vertex = SupportsExtension(VK_EXT_PROVOKING_VERTEX_EXTENSION_NAME, false);
 	m_optional_extensions.vk_ext_memory_budget = SupportsExtension(VK_EXT_MEMORY_BUDGET_EXTENSION_NAME, false);
@@ -333,9 +375,11 @@ bool GSDeviceVK::SelectDeviceExtensions(ExtensionList* extension_list, bool enab
 	m_optional_extensions.vk_ext_rasterization_order_attachment_access =
 		SupportsExtension(VK_EXT_RASTERIZATION_ORDER_ATTACHMENT_ACCESS_EXTENSION_NAME, false) ||
 		SupportsExtension(VK_ARM_RASTERIZATION_ORDER_ATTACHMENT_ACCESS_EXTENSION_NAME, false);
-	m_optional_extensions.vk_khr_driver_properties = SupportsExtension(VK_KHR_DRIVER_PROPERTIES_EXTENSION_NAME, false);
 	m_optional_extensions.vk_ext_attachment_feedback_loop_layout =
 		SupportsExtension(VK_EXT_ATTACHMENT_FEEDBACK_LOOP_LAYOUT_EXTENSION_NAME, false);
+	m_optional_extensions.vk_ext_line_rasterization = SupportsExtension(VK_EXT_LINE_RASTERIZATION_EXTENSION_NAME,
+		require_line_rasterization);
+	m_optional_extensions.vk_khr_driver_properties = SupportsExtension(VK_KHR_DRIVER_PROPERTIES_EXTENSION_NAME, false);
 
 #ifdef _WIN32
 	m_optional_extensions.vk_ext_full_screen_exclusive =
@@ -530,8 +574,11 @@ bool GSDeviceVK::CreateDevice(VkSurfaceKHR surface, bool enable_validation_layer
 		provoking_vertex_feature.provokingVertexLast = VK_TRUE;
 		Vulkan::AddPointerToChain(&device_info, &provoking_vertex_feature);
 	}
-	line_rasterization_feature.bresenhamLines = VK_TRUE;
-	Vulkan::AddPointerToChain(&device_info, &line_rasterization_feature);
+	if (m_optional_extensions.vk_ext_line_rasterization)
+	{
+		line_rasterization_feature.bresenhamLines = VK_TRUE;
+		Vulkan::AddPointerToChain(&device_info, &line_rasterization_feature);
+	}
 	if (m_optional_extensions.vk_ext_rasterization_order_attachment_access)
 	{
 		rasterization_order_access_feature.rasterizationOrderColorAttachmentAccess = VK_TRUE;
@@ -613,7 +660,8 @@ bool GSDeviceVK::ProcessDeviceExtensions()
 	// add in optional feature structs
 	if (m_optional_extensions.vk_ext_provoking_vertex)
 		Vulkan::AddPointerToChain(&features2, &provoking_vertex_features);
-	Vulkan::AddPointerToChain(&features2, &line_rasterization_feature);
+	if (m_optional_extensions.vk_ext_line_rasterization)
+		Vulkan::AddPointerToChain(&features2, &line_rasterization_feature);
 	if (m_optional_extensions.vk_ext_rasterization_order_attachment_access)
 		Vulkan::AddPointerToChain(&features2, &rasterization_order_access_feature);
 	if (m_optional_extensions.vk_ext_attachment_feedback_loop_layout)
@@ -651,10 +699,16 @@ bool GSDeviceVK::ProcessDeviceExtensions()
 			NUM_TFX_TEXTURES);
 		return false;
 	}
+
 	if (!line_rasterization_feature.bresenhamLines)
 	{
+		// See note in SelectDeviceExtensions().
 		Console.Error("bresenhamLines is not supported.");
+#ifndef __APPLE__
 		return false;
+#else
+		m_optional_extensions.vk_ext_line_rasterization = false;
+#endif
 	}
 
 	// VK_EXT_calibrated_timestamps checking
@@ -1107,7 +1161,9 @@ void GSDeviceVK::SubmitCommandBuffer(
 	if (spin_enabled && m_optional_extensions.vk_ext_calibrated_timestamps)
 		resources.submit_timestamp = GetCPUTimestamp();
 
-	if (!submit_on_thread || !m_present_thread.joinable())
+	// Don't use threaded presentation when spinning is enabled. ScanForCommandBufferCompletion()
+	// calls vkGetFenceStatus(), which reads a fence that has been passed off to the thread.
+	if (!submit_on_thread || GSConfig.HWSpinGPUForReadbacks || !m_present_thread.joinable())
 	{
 		DoSubmitCommandBuffer(m_current_frame, present_swap_chain, spin_cycles);
 		if (present_swap_chain)
@@ -2060,7 +2116,7 @@ bool GSDeviceVK::Create()
 	}
 
 	{
-		std::optional<std::string> shader = Host::ReadResourceFileToString("shaders/vulkan/tfx.glsl");
+		std::optional<std::string> shader = ReadShaderSource("shaders/vulkan/tfx.glsl");
 		if (!shader.has_value())
 		{
 			Host::ReportErrorAsync("GS", "Failed to read shaders/vulkan/tfx.glsl.");
@@ -2197,8 +2253,8 @@ bool GSDeviceVK::UpdateWindow()
 
 void GSDeviceVK::ResizeWindow(s32 new_window_width, s32 new_window_height, float new_window_scale)
 {
-	if (m_swap_chain->GetWidth() == static_cast<u32>(new_window_width) &&
-		m_swap_chain->GetHeight() == static_cast<u32>(new_window_height))
+	if (!m_swap_chain || (m_swap_chain->GetWidth() == static_cast<u32>(new_window_width) &&
+		m_swap_chain->GetHeight() == static_cast<u32>(new_window_height)))
 	{
 		// skip unnecessary resizes
 		m_window_info.surface_scale = new_window_scale;
@@ -2696,7 +2752,7 @@ void GSDeviceVK::DrawIndexedPrimitive()
 
 void GSDeviceVK::DrawIndexedPrimitive(int offset, int count)
 {
-	ASSERT(offset + count <= (int)m_index.count);
+	pxAssert(offset + count <= (int)m_index.count);
 	g_perfmon.Put(GSPerfMon::DrawCalls, 1);
 	vkCmdDrawIndexed(GetCurrentCommandBuffer(), count, 1, m_index.start + offset, m_vertex.start, 0);
 }
@@ -3443,27 +3499,40 @@ void GSDeviceVK::OMSetRenderTargets(
 	{
 		if (vkRt)
 		{
-			// NVIDIA drivers appear to return random garbage when sampling the RT via a feedback loop, if the load op for
-			// the render pass is CLEAR. Using vkCmdClearAttachments() doesn't work, so we have to clear the image instead.
-			if (feedback_loop & FeedbackLoopFlag_ReadAndWriteRT && vkRt->GetState() == GSTexture::State::Cleared &&
-				IsDeviceNVIDIA())
+			if (feedback_loop & FeedbackLoopFlag_ReadAndWriteRT)
 			{
-				vkRt->CommitClear();
-			}
+				// NVIDIA drivers appear to return random garbage when sampling the RT via a feedback loop, if the load op for
+				// the render pass is CLEAR. Using vkCmdClearAttachments() doesn't work, so we have to clear the image instead.
+				if (vkRt->GetState() == GSTexture::State::Cleared && IsDeviceNVIDIA())
+					vkRt->CommitClear();
 
-			vkRt->TransitionToLayout((feedback_loop & FeedbackLoopFlag_ReadAndWriteRT) ?
-										 GSTextureVK::Layout::FeedbackLoop :
-										 GSTextureVK::Layout::ColorAttachment);
+				if (vkRt->GetLayout() != GSTextureVK::Layout::FeedbackLoop)
+				{
+					// need to update descriptors to reflect the new layout
+					m_dirty_flags |= (DIRTY_FLAG_TFX_TEXTURE_0 << TFX_TEXTURE_RT);
+					vkRt->TransitionToLayout(GSTextureVK::Layout::FeedbackLoop);
+				}
+			}
+			else
+			{
+				vkRt->TransitionToLayout(GSTextureVK::Layout::ColorAttachment);
+			}
 		}
 		if (vkDs)
 		{
 			// need to update descriptors to reflect the new layout
-			if ((feedback_loop & FeedbackLoopFlag_ReadDS) && vkDs->GetLayout() != GSTextureVK::Layout::FeedbackLoop)
-				m_dirty_flags |= (DIRTY_FLAG_TFX_TEXTURE_0 << TFX_TEXTURE_RT);
-
-			vkDs->TransitionToLayout((feedback_loop & FeedbackLoopFlag_ReadDS) ?
-										 GSTextureVK::Layout::FeedbackLoop :
-										 GSTextureVK::Layout::DepthStencilAttachment);
+			if (feedback_loop & FeedbackLoopFlag_ReadDS)
+			{
+				if (vkDs->GetLayout() != GSTextureVK::Layout::FeedbackLoop)
+				{
+					m_dirty_flags |= (DIRTY_FLAG_TFX_TEXTURE_0 << TFX_TEXTURE_TEXTURE);
+					vkDs->TransitionToLayout(GSTextureVK::Layout::FeedbackLoop);
+				}
+			}
+			else
+			{
+				vkDs->TransitionToLayout(GSTextureVK::Layout::DepthStencilAttachment);
+			}
 		}
 	}
 
@@ -3808,7 +3877,7 @@ bool GSDeviceVK::CreateRenderPasses()
 
 bool GSDeviceVK::CompileConvertPipelines()
 {
-	std::optional<std::string> shader = Host::ReadResourceFileToString("shaders/vulkan/convert.glsl");
+	const std::optional<std::string> shader = ReadShaderSource("shaders/vulkan/convert.glsl");
 	if (!shader)
 	{
 		Host::ReportErrorAsync("GS", "Failed to read shaders/vulkan/convert.glsl.");
@@ -3996,7 +4065,7 @@ bool GSDeviceVK::CompilePresentPipelines()
 	if (m_swap_chain_render_pass == VK_NULL_HANDLE)
 		return false;
 
-	std::optional<std::string> shader = Host::ReadResourceFileToString("shaders/vulkan/present.glsl");
+	const std::optional<std::string> shader = ReadShaderSource("shaders/vulkan/present.glsl");
 	if (!shader)
 	{
 		Host::ReportErrorAsync("GS", "Failed to read shaders/vulkan/present.glsl.");
@@ -4047,7 +4116,7 @@ bool GSDeviceVK::CompilePresentPipelines()
 
 bool GSDeviceVK::CompileInterlacePipelines()
 {
-	std::optional<std::string> shader = Host::ReadResourceFileToString("shaders/vulkan/interlace.glsl");
+	const std::optional<std::string> shader = ReadShaderSource("shaders/vulkan/interlace.glsl");
 	if (!shader)
 	{
 		Host::ReportErrorAsync("GS", "Failed to read shaders/vulkan/interlace.glsl.");
@@ -4098,7 +4167,7 @@ bool GSDeviceVK::CompileInterlacePipelines()
 
 bool GSDeviceVK::CompileMergePipelines()
 {
-	std::optional<std::string> shader = Host::ReadResourceFileToString("shaders/vulkan/merge.glsl");
+	const std::optional<std::string> shader = ReadShaderSource("shaders/vulkan/merge.glsl");
 	if (!shader)
 	{
 		Host::ReportErrorAsync("GS", "Failed to read shaders/vulkan/merge.glsl.");
@@ -4168,14 +4237,14 @@ bool GSDeviceVK::CompilePostProcessingPipelines()
 	gpb.SetRenderPass(rp, 0);
 
 	{
-		std::optional<std::string> vshader = Host::ReadResourceFileToString("shaders/vulkan/convert.glsl");
+		const std::optional<std::string> vshader = ReadShaderSource("shaders/vulkan/convert.glsl");
 		if (!vshader)
 		{
 			Host::ReportErrorAsync("GS", "Failed to read shaders/vulkan/convert.glsl.");
 			return false;
 		}
 
-		std::optional<std::string> pshader = Host::ReadResourceFileToString("shaders/common/fxaa.fx");
+		const std::optional<std::string> pshader = ReadShaderSource("shaders/common/fxaa.fx");
 		if (!pshader)
 		{
 			Host::ReportErrorAsync("GS", "Failed to read shaders/common/fxaa.fx.");
@@ -4203,7 +4272,7 @@ bool GSDeviceVK::CompilePostProcessingPipelines()
 	}
 
 	{
-		std::optional<std::string> shader = Host::ReadResourceFileToString("shaders/vulkan/shadeboost.glsl");
+		const std::optional<std::string> shader = ReadShaderSource("shaders/vulkan/shadeboost.glsl");
 		if (!shader)
 		{
 			Host::ReportErrorAsync("GS", "Failed to read shaders/vulkan/shadeboost.glsl.");
@@ -4253,7 +4322,7 @@ bool GSDeviceVK::CompileCASPipelines()
 	Vulkan::SetObjectName(dev, m_cas_pipeline_layout, "CAS pipeline layout");
 
 	// we use specialization constants to avoid compiling it twice
-	std::optional<std::string> cas_source(Host::ReadResourceFileToString("shaders/vulkan/cas.glsl"));
+	std::optional<std::string> cas_source = ReadShaderSource("shaders/vulkan/cas.glsl");
 	if (!cas_source.has_value() || !GetCASShaderSource(&cas_source.value()))
 		return false;
 
@@ -4279,7 +4348,7 @@ bool GSDeviceVK::CompileCASPipelines()
 
 bool GSDeviceVK::CompileImGuiPipeline()
 {
-	const std::optional<std::string> glsl = Host::ReadResourceFileToString("shaders/vulkan/imgui.glsl");
+	const std::optional<std::string> glsl = ReadShaderSource("shaders/vulkan/imgui.glsl");
 	if (!glsl.has_value())
 	{
 		Console.Error("Failed to read imgui.glsl");
@@ -4639,7 +4708,7 @@ VkShaderModule GSDeviceVK::GetTFXFragmentShader(const GSHWDrawConfig::PSSelector
 	AddMacro(ss, "PS_ADJT", sel.adjt);
 	AddMacro(ss, "PS_AEM_FMT", sel.aem_fmt);
 	AddMacro(ss, "PS_PAL_FMT", sel.pal_fmt);
-	AddMacro(ss, "PS_DFMT", sel.dfmt);
+	AddMacro(ss, "PS_DST_FMT", sel.dst_fmt);
 	AddMacro(ss, "PS_DEPTH_FMT", sel.depth_fmt);
 	AddMacro(ss, "PS_CHANNEL_FETCH", sel.channel);
 	AddMacro(ss, "PS_URBAN_CHAOS_HLE", sel.urban_chaos_hle);
@@ -4737,8 +4806,11 @@ VkPipeline GSDeviceVK::CreateTFXPipeline(const PipelineSelector& p)
 	}
 	gpb.SetPrimitiveTopology(topology_lookup[p.topology]);
 	gpb.SetRasterizationState(VK_POLYGON_MODE_FILL, VK_CULL_MODE_NONE, VK_FRONT_FACE_CLOCKWISE);
-	if (p.topology == static_cast<u8>(GSHWDrawConfig::Topology::Line))
+	if (m_optional_extensions.vk_ext_line_rasterization &&
+		p.topology == static_cast<u8>(GSHWDrawConfig::Topology::Line))
+	{
 		gpb.SetLineRasterizationMode(VK_LINE_RASTERIZATION_MODE_BRESENHAM_EXT);
+	}
 	gpb.SetDynamicViewportAndScissorState();
 	gpb.AddDynamicState(VK_DYNAMIC_STATE_BLEND_CONSTANTS);
 	gpb.AddDynamicState(VK_DYNAMIC_STATE_LINE_WIDTH);

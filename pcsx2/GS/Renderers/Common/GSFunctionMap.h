@@ -1,24 +1,12 @@
-/*  PCSX2 - PS2 Emulator for PCs
- *  Copyright (C) 2002-2021 PCSX2 Dev Team
- *
- *  PCSX2 is free software: you can redistribute it and/or modify it under the terms
- *  of the GNU Lesser General Public License as published by the Free Software Found-
- *  ation, either version 3 of the License, or (at your option) any later version.
- *
- *  PCSX2 is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
- *  without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
- *  PURPOSE.  See the GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License along with PCSX2.
- *  If not, see <http://www.gnu.org/licenses/>.
- */
+// SPDX-FileCopyrightText: 2002-2023 PCSX2 Dev Team
+// SPDX-License-Identifier: LGPL-3.0+
 
 #pragma once
 
 #include "GS/GSExtra.h"
 #include "GS/Renderers/SW/GSScanlineEnvironment.h"
-#include "VirtualMemory.h"
-#include "common/emitter/tools.h"
+
+#include "common/HostSys.h"
 
 template <class KEY, class VALUE>
 class GSFunctionMap
@@ -92,7 +80,7 @@ public:
 			m_active->actual += actual;
 			m_active->total += total;
 
-			ASSERT(m_active->total >= m_active->actual);
+			pxAssert(m_active->total >= m_active->actual);
 		}
 	}
 
@@ -147,25 +135,15 @@ public:
 // --------------------------------------------------------------------------------------
 // Stores code buffers for the GS software JIT.
 //
-class GSCodeReserve : public RecompiledCodeReserve
+namespace GSCodeReserve
 {
-public:
-	GSCodeReserve();
-	~GSCodeReserve();
+	void ResetMemory();
 
-	static GSCodeReserve& GetInstance();
+	size_t GetMemoryUsed();
 
-	size_t GetMemoryUsed() const { return m_memory_used; }
-
-	void Assign(VirtualMemoryManagerPtr allocator);
-	void Reset();
-
-	u8* Reserve(size_t size);
-	void Commit(size_t size);
-
-private:
-	size_t m_memory_used = 0;
-};
+	u8* ReserveMemory(size_t size);
+	void CommitMemory(size_t size);
+}
 
 template <class CG, class KEY, class VALUE>
 class GSCodeGeneratorFunctionMap : public GSFunctionMap<KEY, VALUE>
@@ -200,9 +178,9 @@ public:
 		}
 		else
 		{
-			u8* code_ptr = GSCodeReserve::GetInstance().Reserve(MAX_SIZE);
+			u8* code_ptr = GSCodeReserve::ReserveMemory(MAX_SIZE);
 			CG cg(key, code_ptr, MAX_SIZE);
-			ASSERT(cg.getSize() < MAX_SIZE);
+			pxAssert(cg.getSize() < MAX_SIZE);
 
 #if 0
 			fprintf(stderr, "%s Location:%p Size:%zu Key:%llx\n", m_name.c_str(), code_ptr, cg.getSize(), (u64)key);
@@ -210,7 +188,7 @@ public:
 			sel.Print();
 #endif
 
-			GSCodeReserve::GetInstance().Commit(cg.getSize());
+			GSCodeReserve::CommitMemory(cg.getSize());
 
 			ret = (VALUE)cg.getCode();
 

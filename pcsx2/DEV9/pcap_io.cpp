@@ -1,19 +1,5 @@
-/*  PCSX2 - PS2 Emulator for PCs
- *  Copyright (C) 2002-2020  PCSX2 Dev Team
- *
- *  PCSX2 is free software: you can redistribute it and/or modify it under the terms
- *  of the GNU Lesser General Public License as published by the Free Software Found-
- *  ation, either version 3 of the License, or (at your option) any later version.
- *
- *  PCSX2 is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
- *  without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
- *  PURPOSE.  See the GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License along with PCSX2.
- *  If not, see <http://www.gnu.org/licenses/>.
- */
-
-#include "PrecompiledHeader.h"
+// SPDX-FileCopyrightText: 2002-2023 PCSX2 Dev Team
+// SPDX-License-Identifier: LGPL-3.0+
 
 #include "common/Assertions.h"
 #include <memory>
@@ -225,7 +211,7 @@ std::vector<AdapterEntry> PCAPAdapter::GetAdapters()
 		entry.type = Pcsx2Config::DEV9Options::NetApi::PCAP_Switched;
 #ifdef _WIN32
 		//guid
-		if (!StringUtil::StartsWith(d->name, PCAPPREFIX))
+		if (!std::string_view(d->name).starts_with(PCAPPREFIX))
 		{
 			Console.Error("PCAP: Unexpected Device: ", d->name);
 			d = d->next;
@@ -242,7 +228,7 @@ std::vector<AdapterEntry> PCAPAdapter::GetAdapters()
 		else
 		{
 			//have to use description
-			//NPCAP 1.10 is using an version of pcap that dosn't
+			//NPCAP 1.10 is using a version of pcap that doesn't
 			//allow us to set it to use UTF8
 			//see https://github.com/nmap/npcap/issues/276
 			//We have to convert from ANSI to wstring, to then convert to UTF8
@@ -321,11 +307,10 @@ bool PCAPAdapter::InitPCAP(const std::string& adapter, bool promiscuous)
 bool PCAPAdapter::SetMACSwitchedFilter(MAC_Address mac)
 {
 	bpf_program fp;
-	char filter[1024] = "ether broadcast or ether dst ";
 
-	char virtual_mac_str[18];
-	sprintf(virtual_mac_str, "%.2x:%.2x:%.2x:%.2x:%.2x:%.2x", mac.bytes[0], mac.bytes[1], mac.bytes[2], mac.bytes[3], mac.bytes[4], mac.bytes[5]);
-	strcat(filter, virtual_mac_str);
+	char filter[128];
+	std::snprintf(filter, std::size(filter), "ether broadcast or ether dst %.2x:%.2x:%.2x:%.2x:%.2x:%.2x",
+		mac.bytes[0], mac.bytes[1], mac.bytes[2], mac.bytes[3], mac.bytes[4], mac.bytes[5]);
 
 	if (pcap_compile(hpcap, &fp, filter, 1, PCAP_NETMASK_UNKNOWN) == -1)
 	{

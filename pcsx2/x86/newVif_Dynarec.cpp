@@ -1,65 +1,25 @@
-/*  PCSX2 - PS2 Emulator for PCs
- *  Copyright (C) 2002-2010  PCSX2 Dev Team
- *
- *  PCSX2 is free software: you can redistribute it and/or modify it under the terms
- *  of the GNU Lesser General Public License as published by the Free Software Found-
- *  ation, either version 3 of the License, or (at your option) any later version.
- *
- *  PCSX2 is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
- *  without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
- *  PURPOSE.  See the GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License along with PCSX2.
- *  If not, see <http://www.gnu.org/licenses/>.
- */
+// SPDX-FileCopyrightText: 2002-2023 PCSX2 Dev Team
+// SPDX-License-Identifier: LGPL-3.0+
 
-// newVif Dynarec - Dynamically Recompiles Vif 'unpack' Packets
-// authors: cottonvibes(@gmail.com)
-//			Jake.Stine (@gmail.com)
-
-#include "PrecompiledHeader.h"
 #include "newVif_UnpackSSE.h"
 #include "MTVU.h"
 #include "common/Perf.h"
 #include "common/StringUtil.h"
 #include "fmt/core.h"
 
-static void recReset(int idx)
+void dVifReset(int idx)
 {
 	nVif[idx].vifBlocks.reset();
 
-	nVif[idx].recReserve->Reset();
-
-	nVif[idx].recWritePtr = nVif[idx].recReserve->GetPtr();
-}
-
-void dVifReserve(int idx)
-{
-	if (nVif[idx].recReserve)
-		return;
-	
 	const size_t offset = idx ? HostMemoryMap::VIF1recOffset : HostMemoryMap::VIF0recOffset;
-	nVif[idx].recReserve = new RecompiledCodeReserve(StringUtil::StdStringFromFormat("VIF%u Unpack Recompiler Cache", idx));
-	nVif[idx].recReserve->Assign(GetVmMemory().CodeMemory(), offset, 8 * _1mb);
-}
-
-void dVifReset(int idx)
-{
-	pxAssertDev(nVif[idx].recReserve, "Dynamic VIF recompiler reserve must be created prior to VIF use or reset!");
-
-	recReset(idx);
-}
-
-void dVifClose(int idx)
-{
-	if (nVif[idx].recReserve)
-		nVif[idx].recReserve->Reset();
+	const size_t size = idx ? HostMemoryMap::VIF1recSize : HostMemoryMap::VIF0recSize;
+	nVif[idx].recWritePtr = SysMemory::GetCodePtr(offset);
+	nVif[idx].recEndPtr = nVif[idx].recWritePtr + (size - _256kb);
 }
 
 void dVifRelease(int idx)
 {
-	dVifClose(idx);
-	safe_delete(nVif[idx].recReserve);
+	nVif[idx].vifBlocks.clear();
 }
 
 VifUnpackSSE_Dynarec::VifUnpackSSE_Dynarec(const nVifStruct& vif_, const nVifBlock& vifBlock_)
@@ -110,7 +70,7 @@ __fi void VifUnpackSSE_Dynarec::SetMasks(int cS) const
 
 void VifUnpackSSE_Dynarec::doMaskWrite(const xRegisterSSE& regX) const
 {
-	pxAssertDev(regX.Id <= 1, "Reg Overflow! XMM2 thru XMM6 are reserved for masking.");
+	pxAssertMsg(regX.Id <= 1, "Reg Overflow! XMM2 thru XMM6 are reserved for masking.");
 
 	const int cc = std::min(vCL, 3);
 	u32 m0 = (vB.mask >> (cc * 8)) & 0xff; //The actual mask example 0xE4 (protect, col, row, clear)
@@ -368,11 +328,11 @@ _vifT __fi nVifBlock* dVifCompile(nVifBlock& block, bool isFill)
 	nVifStruct& v = nVif[idx];
 
 	// Check size before the compilation
-	if (v.recWritePtr > (v.recReserve->GetPtrEnd() - _256kb))
+	if (v.recWritePtr >= v.recEndPtr)
 	{
 		DevCon.WriteLn("nVif Recompiler Cache Reset! [0x%016" PRIXPTR " > 0x%016" PRIXPTR "]",
-			v.recWritePtr, v.recReserve->GetPtrEnd());
-		recReset(idx);
+			v.recWritePtr, v.recEndPtr);
+		dVifReset(idx);
 	}
 
 	// Compile the block now
@@ -430,10 +390,8 @@ _vifT __fi void dVifUnpack(const u8* data, bool isFill)
 
 	// Seach in cache before trying to compile the block
 	nVifBlock* b = v.vifBlocks.find(block);
-	if (unlikely(b == nullptr))
-	{
+	if (!b) [[unlikely]]
 		b = dVifCompile<idx>(block, isFill);
-	}
 
 	{ // Execute the block
 		const VURegs& VU = vuRegs[idx];
@@ -442,7 +400,7 @@ _vifT __fi void dVifUnpack(const u8* data, bool isFill)
 		u8* startmem = VU.Mem + (vif.tag.addr & (vuMemLimit - 0x10));
 		u8* endmem   = VU.Mem + vuMemLimit;
 
-		if (likely((startmem + b->length) <= endmem))
+		if ((startmem + b->length) <= endmem) [[likely]]
 		{
 			// No wrapping, you can run the fast dynarec
 			((nVifrecCall)b->startPtr)((uptr)startmem, (uptr)data);

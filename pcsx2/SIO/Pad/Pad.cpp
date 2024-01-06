@@ -1,31 +1,20 @@
-/*  PCSX2 - PS2 Emulator for PCs
- *  Copyright (C) 2002-2023  PCSX2 Dev Team
- *
- *  PCSX2 is free software: you can redistribute it and/or modify it under the terms
- *  of the GNU Lesser General Public License as published by the Free Software Found-
- *  ation, either version 3 of the License, or (at your option) any later version.
- *
- *  PCSX2 is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
- *  without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
- *  PURPOSE.  See the GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License along with PCSX2.
- *  If not, see <http://www.gnu.org/licenses/>.
- */
-
-#include "PrecompiledHeader.h"
+// SPDX-FileCopyrightText: 2002-2023 PCSX2 Dev Team
+// SPDX-License-Identifier: LGPL-3.0+
 
 #include "Host.h"
 #include "Input/InputManager.h"
 #include "SIO/Pad/Pad.h"
 #include "SIO/Pad/PadDualshock2.h"
 #include "SIO/Pad/PadGuitar.h"
+#include "SIO/Pad/PadPopn.h"
 #include "SIO/Pad/PadNotConnected.h"
 #include "SIO/Sio.h"
 
 #include "IconsFontAwesome5.h"
 
+#include "VMManager.h"
 #include "common/Assertions.h"
+#include "common/Console.h"
 #include "common/FileSystem.h"
 #include "common/Path.h"
 #include "common/SettingsInterface.h"
@@ -49,8 +38,7 @@ namespace Pad
 
 	static const char* GetControllerTypeName(Pad::ControllerType type);
 
-	static std::unique_ptr<PadBase> CreatePad(u8 unifiedSlot, Pad::ControllerType controllerType);
-	static PadBase* ChangePadType(u8 unifiedSlot, Pad::ControllerType controllerType);
+	static PadBase* CreatePad(u8 unifiedSlot, Pad::ControllerType controllerType, size_t ejectTicks = 0);
 
 	static void LoadMacroButtonConfig(
 		const SettingsInterface& si, u32 pad, const ControllerInfo* ci, const std::string& section);
@@ -58,6 +46,9 @@ namespace Pad
 
 	static std::array<std::array<MacroButton, NUM_MACRO_BUTTONS_PER_CONTROLLER>, NUM_CONTROLLER_PORTS> s_macro_buttons;
 	static std::array<std::unique_ptr<PadBase>, NUM_CONTROLLER_PORTS> s_controllers;
+
+	bool mtapPort0LastState;
+	bool mtapPort1LastState;
 }
 
 bool Pad::Initialize()
@@ -91,19 +82,24 @@ void Pad::LoadConfig(const SettingsInterface& si)
 {
 	s_macro_buttons = {};
 
-	// This is where we would load controller types, if onepad supported them.
+	const bool mtapPort0Changed = EmuConfig.Pad.MultitapPort0_Enabled != Pad::mtapPort0LastState;
+	const bool mtapPort1Changed = EmuConfig.Pad.MultitapPort1_Enabled != Pad::mtapPort1LastState;
+
 	for (u32 i = 0; i < Pad::NUM_CONTROLLER_PORTS; i++)
 	{
 		const std::string section = GetConfigSection(i);
 		const ControllerInfo* ci = GetControllerInfo(EmuConfig.Pad.Ports[i].Type);
 		pxAssert(ci);
 
-		// If a pad is not yet constructed, at minimum place a NotConnected pad in the slot.
-		// Do not abort the for loop - If there pad settings, we want those to be applied to the slot.
 		PadBase* pad = Pad::GetPad(i);
-		if (!pad || pad->GetType() != ci->type)
+
+		// If pad pointer is not occupied yet, type in settings no longer matches the current type, or a multitap was slotted in/out,
+		// then reconstruct a new pad.
+		if (!pad || pad->GetType() != ci->type || (mtapPort0Changed && (i <= 4 && i != 1)) || (mtapPort1Changed && (i >= 5 || i == 1)))
 		{
-			pad = Pad::ChangePadType(i, ci->type);
+			// Create the new pad. If the VM is in any kind of running state at all, set eject ticks so the PS2 will think
+			// there was some kind of pad ejection event and properly detect the new one, and properly initiate its config sequence.
+			pad = Pad::CreatePad(i, ci->type, (VMManager::GetState() != VMState::Shutdown ? Pad::DEFAULT_EJECT_TICKS : 0));
 			pxAssert(pad);
 		}
 
@@ -130,6 +126,9 @@ void Pad::LoadConfig(const SettingsInterface& si)
 		pad->SetAnalogInvertR((invert_r & 1) != 0, (invert_r & 2) != 0);
 		LoadMacroButtonConfig(si, i, ci, section);
 	}
+
+	Pad::mtapPort0LastState = EmuConfig.Pad.MultitapPort0_Enabled;
+	Pad::mtapPort1LastState = EmuConfig.Pad.MultitapPort1_Enabled;
 }
 
 Pad::ControllerType Pad::GetDefaultPadType(u32 pad)
@@ -245,6 +244,7 @@ static const Pad::ControllerInfo* s_controller_info[] = {
 	&PadNotConnected::ControllerInfo,
 	&PadDualshock2::ControllerInfo,
 	&PadGuitar::ControllerInfo,
+	&PadPopn::ControllerInfo,
 };
 
 const Pad::ControllerInfo* Pad::GetControllerInfo(Pad::ControllerType type)
@@ -471,22 +471,25 @@ std::string Pad::GetConfigSection(u32 pad_index)
 	return fmt::format("Pad{}", pad_index + 1);
 }
 
-std::unique_ptr<PadBase> Pad::CreatePad(u8 unifiedSlot, ControllerType controllerType)
+// Create a new pad instance, update the smart pointer for this pad slot, and return a dumb pointer to the new pad.
+PadBase* Pad::CreatePad(u8 unifiedSlot, ControllerType controllerType, size_t ejectTicks)
 {
 	switch (controllerType)
 	{
 		case ControllerType::DualShock2:
-			return std::make_unique<PadDualshock2>(unifiedSlot);
+			s_controllers[unifiedSlot] = std::make_unique<PadDualshock2>(unifiedSlot, ejectTicks);
+			break;
 		case ControllerType::Guitar:
-			return std::make_unique<PadGuitar>(unifiedSlot);
+			s_controllers[unifiedSlot] = std::make_unique<PadGuitar>(unifiedSlot, ejectTicks);
+			break;
+		case ControllerType::Popn:
+			s_controllers[unifiedSlot] = std::make_unique<PadPopn>(unifiedSlot, ejectTicks);
+			break;
 		default:
-			return std::make_unique<PadNotConnected>(unifiedSlot);
+			s_controllers[unifiedSlot] = std::make_unique<PadNotConnected>(unifiedSlot, ejectTicks);
+			break;
 	}
-}
 
-PadBase* Pad::ChangePadType(u8 unifiedSlot, ControllerType controllerType)
-{
-	s_controllers[unifiedSlot] = CreatePad(unifiedSlot, controllerType);
 	return s_controllers[unifiedSlot].get();
 }
 
@@ -527,35 +530,57 @@ bool Pad::Freeze(StateWrapper& sw)
 
 		for (u32 unifiedSlot = 0; unifiedSlot < NUM_CONTROLLER_PORTS; unifiedSlot++)
 		{
-			ControllerType type;
-			sw.Do(&type);
+			PadBase* currentPad = GetPad(unifiedSlot);
+			ControllerType statePadType;
+			
+			sw.Do(&statePadType);
+			
 			if (sw.HasError())
 				return false;
-
-			std::unique_ptr<PadBase> tempPad;
-			PadBase* pad = GetPad(unifiedSlot);
-			if (!pad || pad->GetType() != type)
+			
+			if (!currentPad)
 			{
+				pxAssertMsg(false, fmt::format("Pad::Freeze (on read) Existing Pad {0} was nullptr", unifiedSlot).c_str());
+			}
+			// If the currently configured pad is of a different type than the pad which was used during the savestate...
+			else if (currentPad->GetType() != statePadType)
+			{
+				const ControllerType currentPadType = currentPad->GetType();
+
 				const auto& [port, slot] = sioConvertPadToPortAndSlot(unifiedSlot);
 				Host::AddIconOSDMessage(fmt::format("UnfreezePad{}Changed", unifiedSlot), ICON_FA_GAMEPAD,
 					fmt::format(TRANSLATE_FS("Pad",
-									"Controller port {}, slot {} has a {} connected, but the save state has a "
-									"{}.\nLeaving the original controller type connected, but this may cause issues."),
+									"Controller port {0}, slot {1} has a {2} connected, but the save state has a "
+									"{3}.\nEjecting {3} and replacing it with {2}."),
 						port, slot,
-						GetControllerTypeName(pad ? pad->GetType() : Pad::ControllerType::NotConnected),
-						GetControllerTypeName(type)));
+						GetControllerTypeName(currentPad ? currentPad->GetType() : Pad::ControllerType::NotConnected),
+						GetControllerTypeName(statePadType)));
+				
+				// Run the freeze, using a new pad instance of the old type just so we make sure all those attributes
+				// from the state are read out and we aren't going to run into some sort of consistency problem.
+				currentPad = CreatePad(unifiedSlot, statePadType);
 
-				// Reset the transfer etc state of the pad, at least it has a better chance of surviving.
-				if (pad)
-					pad->SoftReset();
+				if (currentPad)
+				{
+					currentPad->Freeze(sw);
 
-				// But we still need to pull the data from the state..
-				tempPad = CreatePad(unifiedSlot, type);
-				pad = tempPad.get();
+					// Now immediately discard whatever malformed pad state we just created, and replace it with a fresh pad loaded
+					// using whatever the current user settings are. Savestates are, by definition, never going to occur in the middle
+					// of a transfer between SIO2 and the peripheral, since they aren't captured until the VM is at a point where everything
+					// is "stoppable". For all intents and purposes, by the time a savestate is captured, the IOP is "done" and there is no
+					// "pending work" left hanging in SIO2 or the pads. So there is nothing actually lost from just throwing the pad away and making a new one here.
+					currentPad = CreatePad(unifiedSlot, currentPadType, Pad::DEFAULT_EJECT_TICKS);
+				}
+				else
+				{
+					pxAssertMsg(false, fmt::format("Pad::Freeze (on read) State Pad {0} was nullptr", unifiedSlot).c_str());
+				}
 			}
-
-			if (!pad->Freeze(sw))
+			// ... else, just run the freeze normally.
+			else if (currentPad && !currentPad->Freeze(sw))
+			{
 				return false;
+			}
 		}
 	}
 	else

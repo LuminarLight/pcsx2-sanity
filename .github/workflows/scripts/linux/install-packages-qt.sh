@@ -19,9 +19,11 @@ declare -a BUILD_PACKAGES=(
 	"libfontconfig1-dev"
 	"libharfbuzz-dev"
 	"libjpeg-dev"
+	"liblz4-dev"
 	"libpng-dev"
 	"libfreetype-dev"
 	"libinput-dev"
+	"libwebp-dev"
 	"libxcb-*-dev"
 	"libxkbcommon-dev"
 	"libxkbcommon-x11-dev"
@@ -41,6 +43,7 @@ declare -a PCSX2_PACKAGES=(
 	"libasound2-dev"
 	"libbz2-dev"
 	"libcurl4-openssl-dev"
+	"libdbus-1-dev"
 	"libegl1-mesa-dev"
 	"libgl1-mesa-dev"
 	"libgtk-3-dev"
@@ -64,11 +67,11 @@ declare -a PCSX2_PACKAGES=(
 )
 
 if [ "${COMPILER}" = "clang" ]; then
-	BUILD_PACKAGES+=("llvm-16" "lld-16" "clang-16")
+	BUILD_PACKAGES+=("llvm-17" "lld-17" "clang-17")
 
 	# Ubuntu 22.04 doesn't ship with LLVM 16, so we need to pull it from the llvm.org repos.
 	retry_command wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
-	sudo apt-add-repository -n 'deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-16 main'
+	sudo apt-add-repository -n 'deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-17 main'
 fi
 
 retry_command sudo apt-get -qq update && break

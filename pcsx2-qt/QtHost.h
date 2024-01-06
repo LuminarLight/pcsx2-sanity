@@ -1,17 +1,5 @@
-/*  PCSX2 - PS2 Emulator for PCs
- *  Copyright (C) 2002-2023  PCSX2 Dev Team
- *
- *  PCSX2 is free software: you can redistribute it and/or modify it under the terms
- *  of the GNU Lesser General Public License as published by the Free Software Found-
- *  ation, either version 3 of the License, or (at your option) any later version.
- *
- *  PCSX2 is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
- *  without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
- *  PURPOSE.  See the GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License along with PCSX2.
- *  If not, see <http://www.gnu.org/licenses/>.
- */
+// SPDX-FileCopyrightText: 2002-2023 PCSX2 Dev Team
+// SPDX-License-Identifier: LGPL-3.0+
 
 #pragma once
 
@@ -104,7 +92,6 @@ public Q_SLOTS:
 	void reloadGameSettings();
 	void updateEmuFolders();
 	void toggleSoftwareRendering();
-	void switchRenderer(GSRendererType renderer);
 	void changeDisc(CDVD_SourceType source, const QString& path);
 	void setELFOverride(const QString& path);
 	void changeGSDump(const QString& path);
@@ -167,8 +154,17 @@ Q_SIGNALS:
 	/// Called when achievements login is requested.
 	void onAchievementsLoginRequested(Achievements::LoginRequestReason reason);
 
+	/// Called when achievements login succeeds. Also happens on startup.
+	void onAchievementsLoginSucceeded(const QString& display_name, quint32 points, quint32 sc_points, quint32 unread_messages);
+
 	/// Called when achievements are reloaded/refreshed (e.g. game change, login, option change).
-	void onAchievementsRefreshed(quint32 id, const QString& game_info_string, quint32 total, quint32 points);
+	void onAchievementsRefreshed(quint32 id, const QString& game_info_string);
+
+	/// Called when hardcore mode is enabled or disabled.
+	void onAchievementsHardcoreModeChanged(bool enabled);
+
+	/// Called when cover download is requested.
+	void onCoverDownloaderOpenRequested();
 
 	/// Called when video capture starts/stops.
 	void onCaptureStarted(const QString& filename);
@@ -185,7 +181,6 @@ private:
 	static constexpr u32 FULLSCREEN_UI_CONTROLLER_POLLING_INTERVAL = 8;
 
 	void destroyVM();
-	void executeVM();
 
 	void createBackgroundControllerPollTimer();
 	void destroyBackgroundControllerPollTimer();
@@ -274,4 +269,7 @@ namespace QtHost
 	/// VM state, safe to access on UI thread.
 	bool IsVMValid();
 	bool IsVMPaused();
+
+	/// Compare strings in the locale of the current UI language
+	int LocaleSensitiveCompare(QStringView lhs, QStringView rhs);
 } // namespace QtHost

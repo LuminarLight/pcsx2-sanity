@@ -1,19 +1,6 @@
-/*  PCSX2 - PS2 Emulator for PCs
- *  Copyright (C) 2002-2023  PCSX2 Dev Team
- *
- *  PCSX2 is free software: you can redistribute it and/or modify it under the terms
- *  of the GNU Lesser General Public License as published by the Free Software Found-
- *  ation, either version 3 of the License, or (at your option) any later version.
- *
- *  PCSX2 is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
- *  without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
- *  PURPOSE.  See the GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License along with PCSX2.
- *  If not, see <http://www.gnu.org/licenses/>.
- */
+// SPDX-FileCopyrightText: 2002-2023 PCSX2 Dev Team
+// SPDX-License-Identifier: LGPL-3.0+
 
-#include "PrecompiledHeader.h"
 #include "Global.h"
 #include "Dma.h"
 #include "IopDma.h"
@@ -43,12 +30,8 @@ StereoOut32 V_Core::ReadInput_HiFi()
 
 	if (Index == 1)
 	{
-		// CDDA Mode:
-		// give 30 bit data (SndOut downsamples the rest of the way)
-		// HACKFIX: 28 bits seems better according to rama.  I should take some time and do some
-		//    bitcounting on this one.  --air
-		retval.Left >>= 4;
-		retval.Right >>= 4;
+		retval.Left >>= 16;
+		retval.Right >>= 16;
 	}
 
 	// Simulate MADR increase, GTA VC tracks the MADR address for calculating a certain point in the buffer

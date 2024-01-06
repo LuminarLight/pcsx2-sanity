@@ -1,19 +1,6 @@
-/*  PCSX2 - PS2 Emulator for PCs
- *  Copyright (C) 2002-2010  PCSX2 Dev Team
- *
- *  PCSX2 is free software: you can redistribute it and/or modify it under the terms
- *  of the GNU Lesser General Public License as published by the Free Software Found-
- *  ation, either version 3 of the License, or (at your option) any later version.
- *
- *  PCSX2 is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
- *  without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
- *  PURPOSE.  See the GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License along with PCSX2.
- *  If not, see <http://www.gnu.org/licenses/>.
- */
+// SPDX-FileCopyrightText: 2002-2023 PCSX2 Dev Team
+// SPDX-License-Identifier: LGPL-3.0+
 
-#include "PrecompiledHeader.h"
 #include "Common.h"
 #include "IPU/IPU.h"
 #include "IPU/IPUdma.h"
@@ -88,7 +75,7 @@ void IPU1dma()
 		if (IPUCoreStatus.WaitingOnIPUTo)
 		{
 			IPUCoreStatus.WaitingOnIPUTo = false;
-			CPU_INT(IPU_PROCESS, 4 * BIAS);
+			IPU_INT_PROCESS(4 * BIAS);
 		}
 		return;
 	}
@@ -130,7 +117,7 @@ void IPU1dma()
 		totalqwc += IPU1chain();
 
 	// Nothing has been processed except maybe a tag, or the DMA is ending
-	if(totalqwc == 0 || (IPU1Status.DMAFinished && !IPU1Status.InProgress) || IPUCoreStatus.DataRequested)
+	if(totalqwc == 0 || (IPU1Status.DMAFinished && !IPU1Status.InProgress))
 	{
 		totalqwc = std::max(4, totalqwc) + tagcycles;
 		IPU_INT_TO(totalqwc * BIAS);
@@ -144,7 +131,7 @@ void IPU1dma()
 	if (IPUCoreStatus.WaitingOnIPUTo && g_BP.IFC >= 1)
 	{
 		IPUCoreStatus.WaitingOnIPUTo = false;
-		CPU_INT(IPU_PROCESS, totalqwc * BIAS);
+		IPU_INT_PROCESS(totalqwc * BIAS);
 	}
 
 	IPU_LOG("Completed Call IPU1 DMA QWC Remaining %x Finished %d In Progress %d tadr %x", ipu1ch.qwc, IPU1Status.DMAFinished, IPU1Status.InProgress, ipu1ch.tadr);
@@ -174,7 +161,7 @@ void IPU0dma()
 		if (IPUCoreStatus.WaitingOnIPUFrom)
 		{
 			IPUCoreStatus.WaitingOnIPUFrom = false;
-			CPU_INT(IPU_PROCESS, ipuRegs.ctrl.OFC * BIAS);
+			IPU_INT_PROCESS(ipuRegs.ctrl.OFC * BIAS);
 		}
 		return;
 	}
@@ -208,7 +195,7 @@ void IPU0dma()
 	if (ipuRegs.ctrl.BUSY && IPUCoreStatus.WaitingOnIPUFrom)
 	{
 		IPUCoreStatus.WaitingOnIPUFrom = false;
-		CPU_INT(IPU_PROCESS, readsize * BIAS);
+		IPU_INT_PROCESS(readsize * BIAS);
 	}
 }
 

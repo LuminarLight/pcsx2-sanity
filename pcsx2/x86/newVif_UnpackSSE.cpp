@@ -1,19 +1,6 @@
-/*  PCSX2 - PS2 Emulator for PCs
- *  Copyright (C) 2002-2010  PCSX2 Dev Team
- *
- *  PCSX2 is free software: you can redistribute it and/or modify it under the terms
- *  of the GNU Lesser General Public License as published by the Free Software Found-
- *  ation, either version 3 of the License, or (at your option) any later version.
- *
- *  PCSX2 is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
- *  without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
- *  PURPOSE.  See the GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License along with PCSX2.
- *  If not, see <http://www.gnu.org/licenses/>.
- */
+// SPDX-FileCopyrightText: 2002-2023 PCSX2 Dev Team
+// SPDX-License-Identifier: LGPL-3.0+
 
-#include "PrecompiledHeader.h"
 #include "newVif_UnpackSSE.h"
 #include "common/Perf.h"
 #include "fmt/core.h"
@@ -23,9 +10,6 @@
 #define xMOV32(regX, loc)  xMOVSSZX(regX, loc)
 #define xMOV64(regX, loc)  xMOVUPS (regX, loc)
 #define xMOV128(regX, loc) xMOVUPS (regX, loc)
-
-//alignas(__pagesize) static u8 nVifUpkExec[__pagesize*4];
-static RecompiledCodeReserve* nVifUpkExec = NULL;
 
 // =====================================================================================================
 //  VifUnpackSSE_Base Section
@@ -376,35 +360,23 @@ static void nVifGen(int usn, int mask, int curCycle)
 
 void VifUnpackSSE_Init()
 {
-	if (nVifUpkExec)
-		return;
-
 	DevCon.WriteLn("Generating SSE-optimized unpacking functions for VIF interpreters...");
 
-	nVifUpkExec = new RecompiledCodeReserve("VIF SSE-optimized Unpacking Functions");
-	nVifUpkExec->Assign(GetVmMemory().CodeMemory(), HostMemoryMap::VIFUnpackRecOffset, _1mb);
-	xSetPtr(*nVifUpkExec);
+	xSetPtr(SysMemory::GetVIFUnpackRec());
 
 	for (int a = 0; a < 2; a++)
 		for (int b = 0; b < 2; b++)
 			for (int c = 0; c < 4; c++)
 				nVifGen(a, b, c);
 
-	nVifUpkExec->ForbidModification();
-
 	DevCon.WriteLn("Unpack function generation complete.  Generated function statistics:");
 	DevCon.Indent().WriteLn(
-		"Reserved buffer    : %u bytes @ 0x%016" PRIXPTR "\n"
-		"x86 code generated : %u bytes\n",
-		(uint)nVifUpkExec->GetSize(),
-		nVifUpkExec->GetPtr(),
-		(uint)(xGetPtr() - nVifUpkExec->GetPtr())
+		"Reserved buffer    : %zu bytes @ 0x%016" PRIXPTR "\n"
+		"x86 code generated : %zu bytes\n",
+		SysMemory::GetVIFUnpackRecEnd() - SysMemory::GetVIFUnpackRec(),
+		SysMemory::GetVIFUnpackRec(),
+		xGetPtr() - SysMemory::GetVIFUnpackRec()
 	);
 
-	Perf::any.Register(nVifUpkExec->GetPtr(), xGetPtr() - nVifUpkExec->GetPtr(), "VIF Unpack");
-}
-
-void VifUnpackSSE_Destroy()
-{
-	safe_delete(nVifUpkExec);
+	Perf::any.Register(SysMemory::GetVIFUnpackRec(), xGetPtr() - SysMemory::GetVIFUnpackRec(), "VIF Unpack");
 }

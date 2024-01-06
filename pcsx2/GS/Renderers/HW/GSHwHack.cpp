@@ -1,19 +1,6 @@
-/*  PCSX2 - PS2 Emulator for PCs
- *  Copyright (C) 2002-2021 PCSX2 Dev Team
- *
- *  PCSX2 is free software: you can redistribute it and/or modify it under the terms
- *  of the GNU Lesser General Public License as published by the Free Software Found-
- *  ation, either version 3 of the License, or (at your option) any later version.
- *
- *  PCSX2 is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
- *  without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
- *  PURPOSE.  See the GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License along with PCSX2.
- *  If not, see <http://www.gnu.org/licenses/>.
- */
+// SPDX-FileCopyrightText: 2002-2023 PCSX2 Dev Team
+// SPDX-License-Identifier: LGPL-3.0+
 
-#include "PrecompiledHeader.h"
 #include "GS/Renderers/HW/GSRendererHW.h"
 #include "GS/Renderers/HW/GSHwHack.h"
 #include "GS/GSGL.h"
@@ -138,38 +125,6 @@ bool GSHwHack::GSC_SacredBlaze(GSRendererHW& r, int& skip)
 		{
 			r.SwPrimRender(r, RTBP0 > 0x1000, false);
 			skip = 1;
-		}
-	}
-
-	return true;
-}
-
-bool GSHwHack::GSC_SakuraTaisen(GSRendererHW& r, int& skip)
-{
-	if (skip == 0)
-	{
-		if (!RTME && (RFBP == 0x0 || RFBP == 0x1180) && (RTBP0 != 0x3fc0 && RTBP0 != 0x3c9a && RTBP0 != 0x3dec /*GSC_TBP0 ==0x38d0 || GSC_TBP0==0x3912 ||GSC_TBP0==0x3bdc ||GSC_TBP0==0x3ab3 ||GSC_TBP0<=0x3a92*/) && RFPSM == PSMCT32 && (RTPSM == PSMT8 || RTPSM == PSMT4) && (RFBMSK == 0x00FFFFFF || !RFBMSK))
-		{
-			skip = 0; //3dec 3fc0 3c9a
-		}
-		if (!RTME && (RFBP | RTBP0) != 0 && (RFBP | RTBP0) != 0x1180 && (RFBP | RTBP0) != 0x3be0 && (RFBP | RTBP0) != 0x3c80 && RTBP0 != 0x3c9a && (RFBP | RTBP0) != 0x3d80 && RTBP0 != 0x3dec && RFPSM == PSMCT32 && (RFBMSK == 0))
-		{
-			skip = 0; //3dec 3fc0 3c9a
-		}
-		if (!RTME && (RFBP | RTBP0) != 0 && (RFBP | RTBP0) != 0x1180 && (RFBP | RTBP0) != 0x3be0 && (RFBP | RTBP0) != 0x3c80 && (RFBP | RTBP0) != 0x3d80 && RTBP0 != 0x3c9a && RTBP0 != 0x3de && RFPSM == PSMCT32 && (RFBMSK == 0))
-		{
-			skip = 1; //3dec 3fc0 3c9a
-		}
-		else if (RTME && (RFBP == 0 || RFBP == 0x1180) && RTBP0 == 0x35B8 && RTPSM == PSMT4)
-		{
-			skip = 1;
-		}
-		else
-		{
-			if (!RTME && (RFBP | RTBP0) == 0x38d0 && RFPSM == PSMCT32)
-			{
-				skip = 1; //3dec 3fc0 3c9a
-			}
 		}
 	}
 
@@ -523,23 +478,6 @@ bool GSHwHack::GSC_SakuraWarsSoLongMyLove(GSRendererHW& r, int& skip)
 	return true;
 }
 
-bool GSHwHack::GSC_KnightsOfTheTemple2(GSRendererHW& r, int& skip)
-{
-	if (skip == 0)
-	{
-		if (RTPSM == PSMT8H && RFBMSK == 0)
-		{
-			skip = 1; // Ghosting
-		}
-		else if (RTPSM == 0x00000 && PSMCT24 && RTME && (RFBP == 0x3400 || RFBP == 0x3a00))
-		{
-			skip = 1; // Light source
-		}
-	}
-
-	return true;
-}
-
 bool GSHwHack::GSC_UltramanFightingEvolution(GSRendererHW& r, int& skip)
 {
 	if (skip == 0)
@@ -668,9 +606,9 @@ bool GSHwHack::GSC_NFSUndercover(GSRendererHW& r, int& skip)
 		v[0].XYZ.Y = static_cast<u16>(RCONTEXT->XYOFFSET.OFY + (r.m_r.w << 4));
 		v[0].U = r.m_r.z << 4;
 		v[0].V = r.m_r.w << 4;
-		RCONTEXT->scissor.in.z = r.m_r.z;
+		RCONTEXT->scissor.in.z = r.m_r.z * 2;
 		RCONTEXT->scissor.in.w = r.m_r.w;
-		r.m_vt.m_max.p.x = r.m_r.z;
+		r.m_vt.m_max.p.x = r.m_r.z * 2;
 		r.m_vt.m_max.p.y = r.m_r.w;
 		r.m_vt.m_max.t.x = r.m_r.z;
 		r.m_vt.m_max.t.y = r.m_r.w;
@@ -694,13 +632,21 @@ bool GSHwHack::GSC_PolyphonyDigitalGames(GSRendererHW& r, int& skip)
 	// Unfortunately because we're HLE'ing split RGB shuffles into one, and the draws themselves
 	// vary a lot, we can't predetermine a skip number, and because the game changes the CBP,
 	// that's going to break us in the middle off the shuffle... So, just track it ourselves.
+
+	// Need to track the FBMSK as well. The transition at the start of the race does both an RGB
+	// and A shuffle, but obviously changes FBMSK mid-way, so we can restart then.
+
 	static bool shuffle_hle_active = false;
+	static u32 shuffle_fbmsk = 0;
 
 	const bool is_cs = r.IsPossibleChannelShuffle();
 	if (shuffle_hle_active && is_cs)
 	{
-		skip = 1;
-		return true;
+		if (RFBMSK == shuffle_fbmsk)
+		{
+			skip = 1;
+			return true;
+		}
 	}
 	else if (!is_cs)
 	{
@@ -708,10 +654,9 @@ bool GSHwHack::GSC_PolyphonyDigitalGames(GSRendererHW& r, int& skip)
 		return false;
 	}
 
-	GL_PUSH("GSC_PolyphonyDigitalGames(): HLE Gran Turismo RGB channel shuffle");
-
-	GSTextureCache::Target* tex = g_texture_cache->LookupTarget(RTEX0, GSVector2i(1, 1), r.GetTextureScaleFactor(), GSTextureCache::RenderTarget);
-	if (!tex)
+	GSTextureCache::Target* src = g_texture_cache->LookupTarget(RTEX0, GSVector2i(1, 1), r.GetTextureScaleFactor(),
+		GSTextureCache::RenderTarget, true, 0, false, false, true, true, GSVector4i::zero(), true);
+	if (!src)
 		return false;
 
 	// have to set up the palette ourselves too, since GSC executes before it does
@@ -723,16 +668,82 @@ bool GSHwHack::GSC_PolyphonyDigitalGames(GSRendererHW& r, int& skip)
 
 	// skip this draw, and until the end of the CS, ignoring fbmsk and cbp
 	shuffle_hle_active = true;
+	shuffle_fbmsk = RFBMSK;
 	skip = 1;
 
-	GSHWDrawConfig& config = r.BeginHLEHardwareDraw(
-		tex->GetTexture(), nullptr, tex->GetScale(), tex->GetTexture(), tex->GetScale(), tex->GetUnscaledRect());
-	config.pal = palette->GetPaletteGSTexture();
-	config.ps.channel = ChannelFetch_RGB;
-	config.colormask.wrgba = 1 | 2 | 4;
-	r.EndHLEHardwareDraw(false);
+	const u32 fbmsk = RFBMSK;
+	if (RFBMSK != 0x00FFFFFFu)
+	{
+		GL_PUSH("GSC_PolyphonyDigitalGames(): HLE Gran Turismo RGB channel shuffle");
 
-	return true;
+		GSHWDrawConfig& config = r.BeginHLEHardwareDraw(
+			src->GetTexture(), nullptr, src->GetScale(), src->GetTexture(), src->GetScale(), src->GetUnscaledRect());
+		config.pal = palette->GetPaletteGSTexture();
+		config.ps.channel = ChannelFetch_RGB;
+		config.colormask.wrgba = 1 | 2 | 4;
+		r.EndHLEHardwareDraw(false);
+
+		return true;
+	}
+	else
+	{
+		// There's a second variant of this shuffle which gets used in the fade on some setups. See issue #10144.
+		// Instead of extracting the RGB channels, then immediately applying the brightness effect, it extracts
+		// each channel to a separate buffer, then applies them a few hundred draws later. So, we can replicate
+		// that in HLE by creating 3 targets, extracting the corresponding channel to each.
+
+		// Can't use the valid of src, because it gets converted from depth at some point..
+		// Drawn isn't correct, because the target might be from earlier, where it had a higher height.
+		// Instead, we use the resolution from the PCRTC, and halve it. Only thing that seems to work,
+		// otherwise we get the incorrect offset texture pointers. In NTSC, that's 0x0, 0xA00, 0x1400.
+
+		// Further complicating things, the Prologue version shuffles into FBP0 from a different TBP0, so we can't
+		// use that as an indicator. Luckily, all the alpha destination shuffles seem to write to FBP0, so we can
+		// get away with just hardcoding it.
+		const GSVector2i resolution = r.PCRTCDisplays.GetResolution();
+		const GSVector2i size = GSVector2i(resolution.x, resolution.y / 2);
+		const u32 page_offset = ((size.y + 31) / 32) * src->m_TEX0.TBW * BLOCKS_PER_PAGE;
+		constexpr u32 base = 0;
+
+		GL_PUSH("GSC_PolyphonyDigitalGames(): HLE Gran Turismo A channel shuffle");
+		GL_INS("Src: %x %s TBW %u, Dst: %x, %x, %x", src->m_TEX0.TBP0, psm_str(src->m_TEX0.PSM), src->m_TEX0.TBW,
+			base, base + page_offset, base + page_offset * 2);
+		GL_INS("Rect: %d,%d => %d,%d", src->m_drawn_since_read.x, src->m_drawn_since_read.y,
+			src->m_drawn_since_read.z, src->m_drawn_since_read.w);
+
+		for (u32 channel = 0; channel < 3; channel++)
+		{
+			const GIFRegTEX0 TEX0 = GIFRegTEX0::Create(base + channel * page_offset, RTEX0.TBW, PSMCT32);
+			GSTextureCache::Target* dst = g_texture_cache->LookupTarget(TEX0, src->GetUnscaledSize(), src->GetScale(), GSTextureCache::RenderTarget, true, fbmsk);
+			if (!dst)
+			{
+				dst = g_texture_cache->CreateTarget(TEX0, size, size, src->GetScale(), GSTextureCache::RenderTarget, true, fbmsk);
+				if (!dst)
+					continue;
+			}
+
+			// Need the alpha channel.
+			dst->m_TEX0.PSM = PSMCT32;
+
+			// Alpha is unknown, since it comes from RGB.
+			dst->m_alpha_min = 0;
+			dst->m_alpha_max = 255;
+
+			dst->UpdateValidChannels(PSMCT32, fbmsk);
+			dst->UpdateValidity(GSVector4i::loadh(size));
+
+			GSHWDrawConfig& config = r.BeginHLEHardwareDraw(
+				dst->GetTexture(), nullptr, dst->GetScale(), src->GetTexture(), src->GetScale(), src->GetUnscaledRect());
+			config.pal = palette->GetPaletteGSTexture();
+			config.ps.tfx = TFX_DECAL;
+			config.ps.tcc = true;
+			config.ps.channel = ChannelFetch_RED + channel;
+			config.colormask.wrgba = 8;
+			r.EndHLEHardwareDraw(false);
+		}
+
+		return true;
+	}
 }
 
 bool GSHwHack::GSC_BlueTongueGames(GSRendererHW& r, int& skip)
@@ -1065,8 +1076,8 @@ bool GSHwHack::OI_SonicUnleashed(GSRendererHW& r, GSTexture* rt, GSTexture* ds, 
 									std::max(rt_again->m_unscaled_size.y, src->m_unscaled_size.y));
 			rt_again->ResizeTexture(new_size.x, new_size.y);
 			rt = rt_again->m_texture;
-			rt_size = new_size;
-			rt_again->UpdateDrawn(GSVector4i::loadh(rt_size));
+			rt_size = new_size * GSVector2i(src->GetScale());
+			rt_again->UpdateDrawn(GSVector4i::loadh(new_size));
 		}
 	}
 
@@ -1327,7 +1338,6 @@ static bool GetMoveTargetPair(GSRendererHW& r, GSTextureCache::Target** src, GIF
 	return true;
 }
 
-// Disabled to avoid compiler warnings, enable when it is needed.
 static bool GetMoveTargetPair(GSRendererHW& r, GSTextureCache::Target** src, GSTextureCache::Target** dst,
 	bool req_target = false, bool preserve_target = false)
 {
@@ -1399,17 +1409,23 @@ bool GSHwHack::MV_Ico(GSRendererHW& r)
 	// Store B -> A using a channel shuffle.
 	u32 pal[256];
 	for (u32 i = 0; i < std::size(pal); i++)
-		pal[i] = i << 24;	
+		pal[i] = i << 24;
 	std::shared_ptr<GSTextureCache::Palette> palette = g_texture_cache->LookupPaletteObject(pal, 256, true);
 	if (!palette)
 		return false;
 
-	const GSVector4i draw_rc = GSVector4i(0, 0, RWIDTH, RHEIGHT);
+	if (dst->GetUnscaledWidth() < static_cast<int>(RWIDTH) || dst->GetUnscaledHeight() < static_cast<int>(RHEIGHT))
+	{
+		if (!dst->ResizeTexture(dst->GetUnscaledWidth(), static_cast<int>(RWIDTH), std::max(dst->GetUnscaledHeight(), static_cast<int>(RHEIGHT))))
+			return false;
+	}
+
+	const GSVector4i draw_rc = GSVector4i(0, 0, RWIDTH, RHEIGHT).rintersect(dst->GetUnscaledRect());
 	dst->UpdateValidChannels(PSMCT32, 0);
 	dst->UpdateValidity(draw_rc);
 
-	GSHWDrawConfig& config = GSRendererHW::GetInstance()->BeginHLEHardwareDraw(dst->GetTexture(), nullptr,
-		dst->GetScale(), src->GetTexture(), src->GetScale(), draw_rc);
+	GSHWDrawConfig& config = GSRendererHW::GetInstance()->BeginHLEHardwareDraw(
+		dst->GetTexture(), nullptr, dst->GetScale(), src->GetTexture(), src->GetScale(), draw_rc);
 	config.pal = palette->GetPaletteGSTexture();
 	config.ps.channel = ChannelFetch_BLUE;
 	config.ps.depth_fmt = 1;
@@ -1440,12 +1456,10 @@ bool GSHwHack::MV_Ico(GSRendererHW& r)
 #define CRC_F(name) { #name, &GSHwHack::name }
 
 const GSHwHack::Entry<GSRendererHW::GSC_Ptr> GSHwHack::s_get_skip_count_functions[] = {
-	CRC_F(GSC_KnightsOfTheTemple2),
 	CRC_F(GSC_Kunoichi),
 	CRC_F(GSC_Manhunt2),
 	CRC_F(GSC_MidnightClub3),
 	CRC_F(GSC_SacredBlaze),
-	CRC_F(GSC_SakuraTaisen),
 	CRC_F(GSC_SakuraWarsSoLongMyLove),
 	CRC_F(GSC_Simple2000Vol114),
 	CRC_F(GSC_SFEX3),

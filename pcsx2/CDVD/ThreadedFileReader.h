@@ -1,17 +1,5 @@
-/*  PCSX2 - PS2 Emulator for PCs
- *  Copyright (C) 2002-2021 PCSX2 Dev Team
- *
- *  PCSX2 is free software: you can redistribute it and/or modify it under the terms
- *  of the GNU Lesser General Public License as published by the Free Software Found-
- *  ation, either version 3 of the License, or (at your option) any later version.
- *
- *  PCSX2 is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
- *  without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
- *  PURPOSE.  See the GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License along with PCSX2.
- *  If not, see <http://www.gnu.org/licenses/>.
- */
+// SPDX-FileCopyrightText: 2002-2023 PCSX2 Dev Team
+// SPDX-License-Identifier: LGPL-3.0+
 
 #pragma once
 
@@ -46,9 +34,9 @@ protected:
 	/// Synchronously read the given block into `dst`
 	virtual int ReadChunk(void* dst, s64 chunkID) = 0;
 	/// AsyncFileReader open but ThreadedFileReader needs prep work first
-	virtual bool Open2(std::string fileName) = 0;
+	virtual bool Open2(std::string filename, Error* error) = 0;
 	/// AsyncFileReader close but ThreadedFileReader needs prep work first
-	virtual void Close2(void) = 0;
+	virtual void Close2() = 0;
 
 	ThreadedFileReader();
 	~ThreadedFileReader();
@@ -108,12 +96,12 @@ private:
 	bool TryCachedRead(void*& buffer, u64& offset, u32& size, const std::lock_guard<std::mutex>&);
 
 public:
-	bool Open(std::string fileName) final override;
-	int ReadSync(void* pBuffer, uint sector, uint count) final override;
-	void BeginRead(void* pBuffer, uint sector, uint count) final override;
-	int FinishRead(void) final override;
-	void CancelRead(void) final override;
-	void Close(void) final override;
-	void SetBlockSize(uint bytes) final override;
-	void SetDataOffset(int bytes) final override;
+	bool Open(std::string filename, Error* error) final override;
+	int ReadSync(void* pBuffer, u32 sector, u32 count) final override;
+	void BeginRead(void* pBuffer, u32 sector, u32 count) final override;
+	int FinishRead() final override;
+	void CancelRead() final override;
+	void Close() final override;
+	void SetBlockSize(u32 bytes) final override;
+	void SetDataOffset(u32 bytes) final override;
 };

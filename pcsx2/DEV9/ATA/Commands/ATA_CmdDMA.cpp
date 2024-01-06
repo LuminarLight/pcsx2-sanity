@@ -1,19 +1,5 @@
-/*  PCSX2 - PS2 Emulator for PCs
- *  Copyright (C) 2002-2020  PCSX2 Dev Team
- *
- *  PCSX2 is free software: you can redistribute it and/or modify it under the terms
- *  of the GNU Lesser General Public License as published by the Free Software Found-
- *  ation, either version 3 of the License, or (at your option) any later version.
- *
- *  PCSX2 is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
- *  without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
- *  PURPOSE.  See the GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License along with PCSX2.
- *  If not, see <http://www.gnu.org/licenses/>.
- */
-
-#include "PrecompiledHeader.h"
+// SPDX-FileCopyrightText: 2002-2023 PCSX2 Dev Team
+// SPDX-License-Identifier: LGPL-3.0+
 
 #include "DEV9/ATA/ATA.h"
 #include "DEV9/DEV9.h"
@@ -94,11 +80,12 @@ void ATA::ATAreadDMA8Mem(u8* pMem, int size)
 	if ((udmaMode >= 0) &&
 		(dev9.if_ctrl & SPD_IF_ATA_DMAEN) != 0)
 	{
-		if (size == 0)
+		if (size == 0 || nsector == -1)
 			return;
 		DevCon.WriteLn("DEV9: DMA read, size %i, transferred %i, total size %i", size, rdTransferred, nsector * 512);
 
 		//read
+		size = std::min(size, nsector * 512 - rdTransferred);
 		memcpy(pMem, &readBuffer[rdTransferred], size);
 
 		rdTransferred += size;
@@ -119,9 +106,12 @@ void ATA::ATAwriteDMA8Mem(u8* pMem, int size)
 	if ((udmaMode >= 0) &&
 		(dev9.if_ctrl & SPD_IF_ATA_DMAEN) != 0)
 	{
+		if (nsector == -1)
+			return;
 		DevCon.WriteLn("DEV9: DMA write, size %i, transferred %i, total size %i", size, wrTransferred, nsector * 512);
 
 		//write
+		size = std::min(size, nsector * 512 - wrTransferred);
 		memcpy(&currentWrite[wrTransferred], pMem, size);
 
 		wrTransferred += size;
@@ -149,6 +139,8 @@ void ATA::HDD_ReadDMA(bool isLBA48)
 
 	if (!HDD_CanSeek())
 	{
+		Console.Error("DEV9: ATA: Transfer from invalid LBA %lu", HDD_GetLBA());
+		nsector = -1;
 		regStatus |= ATA_STAT_ERR;
 		regError |= ATA_ERR_ID;
 		PostCmdNoData();
@@ -169,6 +161,8 @@ void ATA::HDD_WriteDMA(bool isLBA48)
 
 	if (!HDD_CanSeek())
 	{
+		Console.Error("DEV9: ATA: Transfer from invalid LBA %lu", HDD_GetLBA());
+		nsector = -1;
 		regStatus |= ATA_STAT_ERR;
 		regError |= ATA_ERR_ID;
 		PostCmdNoData();

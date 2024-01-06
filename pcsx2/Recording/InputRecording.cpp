@@ -1,19 +1,5 @@
-/*  PCSX2 - PS2 Emulator for PCs
- *  Copyright (C) 2002-2023 PCSX2 Dev Team
- *
- *  PCSX2 is free software: you can redistribute it and/or modify it under the terms
- *  of the GNU Lesser General Public License as published by the Free Software Found-
- *  ation, either version 3 of the License, or (at your option) any later version.
- *
- *  PCSX2 is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
- *  without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
- *  PURPOSE.  See the GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License along with PCSX2.
- *  If not, see <http://www.gnu.org/licenses/>.
- */
-
-#include "PrecompiledHeader.h"
+// SPDX-FileCopyrightText: 2002-2023 PCSX2 Dev Team
+// SPDX-License-Identifier: LGPL-3.0+
 
 #include "Counters.h"
 #include "MTGS.h"
@@ -82,7 +68,7 @@ bool InputRecording::create(const std::string& fileName, const bool fromSaveStat
 
 	m_file.setEmulatorVersion();
 	m_file.setAuthor(authorName);
-	m_file.setGameName(VMManager::GetTitle());
+	m_file.setGameName(VMManager::GetTitle(false));
 	m_file.writeHeader();
 	initializeState();
 	InputRec::log("Started new input recording");
@@ -133,9 +119,9 @@ bool InputRecording::play(const std::string& filename)
 	initializeState();
 	InputRec::log("Replaying input recording");
 	m_file.logRecordingMetadata();
-	if (VMManager::GetTitle() != m_file.getGameName())
+	if (VMManager::GetTitle(false) != m_file.getGameName())
 	{
-		InputRec::consoleLog(fmt::format("Input recording was possibly constructed for a different game. Expected: {}, Actual: {}", m_file.getGameName(), VMManager::GetTitle()));
+		InputRec::consoleLog(fmt::format("Input recording was possibly constructed for a different game. Expected: {}, Actual: {}", m_file.getGameName(), VMManager::GetTitle(false)));
 	}
 	return true;
 }

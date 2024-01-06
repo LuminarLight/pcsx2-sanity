@@ -1,20 +1,5 @@
-/*  PCSX2 - PS2 Emulator for PCs
- *  Copyright (C) 2002-2010  PCSX2 Dev Team
- *
- *  PCSX2 is free software: you can redistribute it and/or modify it under the terms
- *  of the GNU Lesser General Public License as published by the Free Software Found-
- *  ation, either version 3 of the License, or (at your option) any later version.
- *
- *  PCSX2 is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
- *  without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
- *  PURPOSE.  See the GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License along with PCSX2.
- *  If not, see <http://www.gnu.org/licenses/>.
- */
-
-
-#include "PrecompiledHeader.h"
+// SPDX-FileCopyrightText: 2002-2023 PCSX2 Dev Team
+// SPDX-License-Identifier: LGPL-3.0+
 
 #include "CDVD/CDVDcommon.h"
 #include "CDVD/IsoReader.h"
@@ -25,6 +10,8 @@
 #include "IconsFontAwesome5.h"
 
 #include "common/Assertions.h"
+#include "common/Console.h"
+#include "common/EnumOps.h"
 #include "common/FileSystem.h"
 #include "common/Path.h"
 #include "common/StringUtil.h"
@@ -38,7 +25,7 @@
 
 #define ENABLE_TIMESTAMPS
 
-CDVD_API* CDVD = nullptr;
+const CDVD_API* CDVD = nullptr;
 
 // ----------------------------------------------------------------------------
 // diskTypeCached
@@ -63,7 +50,7 @@ static OutputIsoFile blockDumpFile;
 // relying on DEP exceptions -- and a little more reliable too.
 static void CheckNullCDVD()
 {
-	pxAssertDev(CDVD != NULL, "Invalid CDVD object state (null pointer exception)");
+	pxAssertMsg(CDVD, "Invalid CDVD object state (null pointer exception)");
 }
 
 //////////////////////////////////////////////////////////////////////////////////////////
@@ -305,7 +292,7 @@ void CDVDsys_SetFile(CDVD_SourceType srctype, std::string newfile)
 			symName = m_SourceFilename[enum_cast(srctype)].substr(0, n) + ".sym";
 
 		R5900SymbolMap.LoadNocashSym(symName.c_str());
-		R5900SymbolMap.UpdateActiveSymbols();
+		R5900SymbolMap.SortSymbols();
 	}
 }
 
@@ -327,7 +314,7 @@ void CDVDsys_ClearFiles()
 
 void CDVDsys_ChangeSource(CDVD_SourceType type)
 {
-	if (CDVD != NULL)
+	if (CDVD)
 		DoCDVDclose();
 
 	switch (m_CurrentSourceType = type)
@@ -348,15 +335,14 @@ void CDVDsys_ChangeSource(CDVD_SourceType type)
 	}
 }
 
-bool DoCDVDopen()
+bool DoCDVDopen(Error* error)
 {
 	CheckNullCDVD();
 
 	CDVD->newDiskCB(cdvdNewDiskCB);
 
 	auto CurrentSourceType = enum_cast(m_CurrentSourceType);
-	int ret = CDVD->open(!m_SourceFilename[CurrentSourceType].empty() ? m_SourceFilename[CurrentSourceType].c_str() : nullptr);
-	if (ret == -1)
+	if (!CDVD->open(m_SourceFilename[CurrentSourceType], error))
 		return false; // error! (handled by caller)
 
 	int cdtype = DoCDVDdetectDiskType();
@@ -367,7 +353,7 @@ bool DoCDVDopen()
 		return true;
 	}
 
-	std::string dump_name(Path::StripExtension(FileSystem::GetDisplayNameFromPath(m_SourceFilename[CurrentSourceType])));
+	std::string dump_name(Path::StripExtension(m_SourceFilename[CurrentSourceType]));
 	if (dump_name.empty())
 		dump_name = "Untitled";
 
@@ -428,8 +414,7 @@ void DoCDVDclose()
 
 	blockDumpFile.Close();
 
-	if (CDVD->close != NULL)
-		CDVD->close();
+	CDVD->close();
 
 	DoCDVDresetDiskTypeCache();
 }
@@ -530,75 +515,75 @@ void DoCDVDresetDiskTypeCache()
 
 
 
-s32 CALLBACK NODISCopen(const char* pTitle)
+static bool NODISCopen(std::string filename, Error* error)
 {
-	return 0;
+	return true;
 }
 
-void CALLBACK NODISCclose()
+static void NODISCclose()
 {
 }
 
-s32 CALLBACK NODISCreadTrack(u32 lsn, int mode)
-{
-	return -1;
-}
-
-s32 CALLBACK NODISCgetBuffer(u8* buffer)
+static s32 NODISCreadTrack(u32 lsn, int mode)
 {
 	return -1;
 }
 
-s32 CALLBACK NODISCreadSubQ(u32 lsn, cdvdSubQ* subq)
+static s32 NODISCgetBuffer(u8* buffer)
 {
 	return -1;
 }
 
-s32 CALLBACK NODISCgetTN(cdvdTN* Buffer)
+static s32 NODISCreadSubQ(u32 lsn, cdvdSubQ* subq)
 {
 	return -1;
 }
 
-s32 CALLBACK NODISCgetTD(u8 Track, cdvdTD* Buffer)
+static s32 NODISCgetTN(cdvdTN* Buffer)
 {
 	return -1;
 }
 
-s32 CALLBACK NODISCgetTOC(void* toc)
+static s32 NODISCgetTD(u8 Track, cdvdTD* Buffer)
 {
 	return -1;
 }
 
-s32 CALLBACK NODISCgetDiskType()
+static s32 NODISCgetTOC(void* toc)
+{
+	return -1;
+}
+
+static s32 NODISCgetDiskType()
 {
 	return CDVD_TYPE_NODISC;
 }
 
-s32 CALLBACK NODISCgetTrayStatus()
+static s32 NODISCgetTrayStatus()
 {
 	return CDVD_TRAY_CLOSE;
 }
 
-s32 CALLBACK NODISCdummyS32()
+static s32 NODISCdummyS32()
 {
 	return 0;
 }
 
-void CALLBACK NODISCnewDiskCB(void (*/* callback */)())
+static void NODISCnewDiskCB(void (*/* callback */)())
 {
 }
 
-s32 CALLBACK NODISCreadSector(u8* tempbuffer, u32 lsn, int mode)
-{
-	return -1;
-}
-
-s32 CALLBACK NODISCgetDualInfo(s32* dualType, u32* _layer1start)
+static s32 NODISCreadSector(u8* tempbuffer, u32 lsn, int mode)
 {
 	return -1;
 }
 
-CDVD_API CDVDapi_NoDisc =
+static s32 NODISCgetDualInfo(s32* dualType, u32* _layer1start)
+{
+	return -1;
+}
+
+const CDVD_API CDVDapi_NoDisc =
 	{
 		NODISCclose,
 		NODISCopen,

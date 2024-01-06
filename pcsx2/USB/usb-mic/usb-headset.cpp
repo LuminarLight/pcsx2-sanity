@@ -24,7 +24,6 @@
 
 // Most stuff is based on Qemu 1.7 USB soundcard passthrough code.
 
-#include "PrecompiledHeader.h"
 #include "Host.h"
 #include "USB/qemu-usb/qusb.h"
 #include "USB/qemu-usb/desc.h"
@@ -34,6 +33,8 @@
 #include "USB/usb-mic/audiodev.h"
 #include "USB/USB.h"
 #include "StateWrapper.h"
+
+#include "common/Console.h"
 
 #define BUFFER_FRAMES 200
 
@@ -1005,10 +1006,10 @@ namespace usb_mic
 				nullptr, &AudioDevice::GetOutputDeviceList},
 			{SettingInfo::Type::Integer, "input_latency", TRANSLATE_NOOP("USB", "Input Latency"),
 				TRANSLATE_NOOP("USB", "Specifies the latency to the host input device."),
-				AudioDevice::DEFAULT_LATENCY_STR, "1", "1000", "1", "%dms", nullptr, nullptr, 1.0f},
+				AudioDevice::DEFAULT_LATENCY_STR, "1", "1000", "1", TRANSLATE_NOOP("USB", "%dms"), nullptr, nullptr, 1.0f},
 			{SettingInfo::Type::Integer, "output_latency", TRANSLATE_NOOP("USB", "Output Latency"),
 				TRANSLATE_NOOP("USB", "Specifies the latency to the host output device."),
-				AudioDevice::DEFAULT_LATENCY_STR, "1", "1000", "1", "%dms", nullptr, nullptr, 1.0f},
+				AudioDevice::DEFAULT_LATENCY_STR, "1", "1000", "1", TRANSLATE_NOOP("USB", "%dms"), nullptr, nullptr, 1.0f},
 		};
 		return info;
 	}

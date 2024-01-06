@@ -1,30 +1,17 @@
-/*  PCSX2 - PS2 Emulator for PCs
- *  Copyright (C) 2002-2022  PCSX2 Dev Team
- *
- *  PCSX2 is free software: you can redistribute it and/or modify it under the terms
- *  of the GNU Lesser General Public License as published by the Free Software Found-
- *  ation, either version 3 of the License, or (at your option) any later version.
- *
- *  PCSX2 is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
- *  without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
- *  PURPOSE.  See the GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License along with PCSX2.
- *  If not, see <http://www.gnu.org/licenses/>.
- */
-
-#include "PrecompiledHeader.h"
+// SPDX-FileCopyrightText: 2002-2023 PCSX2 Dev Team
+// SPDX-License-Identifier: LGPL-3.0+
 
 #include "SIO/Memcard/MemoryCardFile.h"
 #include "SIO/Memcard/MemoryCardFolder.h"
 
+#include "common/Assertions.h"
 #include "common/Path.h"
 
-#include "System.h"
 #include "Config.h"
 #include "Host.h"
 #include "IconsFontAwesome5.h"
 
+#include "common/Console.h"
 #include "common/FileSystem.h"
 #include "common/Path.h"
 #include "common/StringUtil.h"
@@ -82,14 +69,10 @@ static void SaveYAMLToFile(const char* filename, const ryml::NodeRef& node)
 	std::fclose(file);
 }
 
-static constexpr time_t MEMORY_CARD_FILE_ENTRY_DATE_TIME_OFFSET = 60 * 60 * 9; // 9 hours from UTC
 static auto last = std::chrono::time_point<std::chrono::system_clock>();
 
 MemoryCardFileEntryDateTime MemoryCardFileEntryDateTime::FromTime(time_t time)
 {
-	// TODO: Is this safe with regard to DST?
-	time += MEMORY_CARD_FILE_ENTRY_DATE_TIME_OFFSET;
-
 	struct tm converted = {};
 #ifdef _MSC_VER
 	gmtime_s(&converted, &time);
@@ -117,7 +100,12 @@ time_t MemoryCardFileEntryDateTime::ToTime() const
 	converted.tm_mday = day;
 	converted.tm_mon = std::max(static_cast<int>(month) - 1, 0);
 	converted.tm_year = std::max(static_cast<int>(year) - 1900, 0);
-	return mktime(&converted);
+
+#ifdef _MSC_VER
+	return _mkgmtime(&converted);
+#else
+	return timegm(&converted);
+#endif
 }
 
 FolderMemoryCard::FolderMemoryCard()
@@ -574,7 +562,7 @@ bool FolderMemoryCard::AddFolder(MemoryCardFileEntry* const dirEntry, const std:
 bool FolderMemoryCard::AddFile(MemoryCardFileEntry* const dirEntry, const std::string& dirPath, const EnumeratedFileEntry& fileEntry, MemoryCardFileMetadataReference* parent)
 {
 	const std::string filePath(Path::Combine(dirPath, fileEntry.m_fileName));
-	pxAssertMsg(StringUtil::StartsWith(filePath, m_folderName.c_str()), "Full file path starts with MC folder path");
+	pxAssertMsg(filePath.starts_with(m_folderName), "Full file path starts with MC folder path");
 	const std::string relativeFilePath(filePath.substr(m_folderName.length() + 1));
 
 	if (auto file = FileSystem::OpenManagedCFile(filePath.c_str(), "rb"); file)
@@ -666,7 +654,7 @@ u32 FolderMemoryCard::CalculateRequiredClustersOfDirectory(const std::string& di
 	FileSystem::FindFiles(dirPath.c_str(), "*", FILESYSTEM_FIND_FILES | FILESYSTEM_FIND_FOLDERS | FILESYSTEM_FIND_HIDDEN_FILES | FILESYSTEM_FIND_RELATIVE_PATHS, &files);
 	for (const FILESYSTEM_FIND_DATA& fd : files)
 	{
-		if (StringUtil::StartsWith(fd.FileName, "_pcsx2_"))
+		if (fd.FileName.starts_with("_pcsx2_"))
 			continue;
 
 		++requiredFileEntryPages;
@@ -1801,7 +1789,7 @@ std::vector<FolderMemoryCard::EnumeratedFileEntry> FolderMemoryCard::GetOrderedF
 
 		for (FILESYSTEM_FIND_DATA& fd : results)
 		{
-			if (StringUtil::StartsWith(fd.FileName, "_pcsx2_"))
+			if (fd.FileName.starts_with("_pcsx2_"))
 				continue;
 
 			std::string filePath(Path::Combine(dirPath, fd.FileName));
@@ -2174,7 +2162,7 @@ void FileAccessHelper::CloseMatching(const std::string_view& path)
 {
 	for (auto it = m_files.begin(); it != m_files.end();)
 	{
-		if (StringUtil::StartsWith(it->second.hostFilePath, path))
+		if (it->second.hostFilePath.starts_with(path))
 		{
 			CloseFileHandle(it->second.fileHandle, it->second.fileRef->entry);
 			it = m_files.erase(it);

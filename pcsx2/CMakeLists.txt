@@ -36,17 +36,6 @@ else()
 	)
 endif()
 
-if(GCC_VERSION VERSION_EQUAL "8.0" OR GCC_VERSION VERSION_GREATER "8.0")
-	# gs is pretty bad at this
-	target_compile_options(PCSX2_FLAGS INTERFACE -Wno-packed-not-aligned -Wno-class-memaccess)
-endif()
-
-if ("${PGO}" STREQUAL "generate")
-	target_compile_options(PCSX2_FLAGS INTERFACE -fprofile-generate)
-elseif("${PGO}" STREQUAL "use")
-	target_compile_options(PCSX2_FLAGS INTERFACE -fprofile-use)
-endif()
-
 if(USE_LINKED_FFMPEG)
 	target_compile_definitions(PCSX2_FLAGS INTERFACE USE_LINKED_FFMPEG)
 	target_link_libraries(PCSX2_FLAGS INTERFACE FFMPEG::avcodec FFMPEG::avformat FFMPEG::avutil FFMPEG::swscale FFMPEG::swresample)
@@ -55,7 +44,6 @@ endif()
 if(WIN32)
 	set(MIN_WIN32 0x0A00)
 	target_compile_definitions(PCSX2_FLAGS INTERFACE
-		__SSE4_1__
 		WINVER=${MIN_WIN32}
 		_WIN32_WINNT=${MIN_WIN32}
 		WIN32_LEAN_AND_MEAN
@@ -132,7 +120,6 @@ set(pcsx2Sources
 	SourceLog.cpp
 	SPR.cpp
 	StateWrapper.cpp
-	System.cpp
 	Vif0_Dma.cpp
 	Vif1_Dma.cpp
 	Vif1_MFIFO.cpp
@@ -140,7 +127,6 @@ set(pcsx2Sources
 	Vif_Codes.cpp
 	Vif_Transfer.cpp
 	Vif_Unpack.cpp
-	VirtualMemory.cpp
 	VMManager.cpp
 	vtlb.cpp
 	VU0.cpp
@@ -191,7 +177,6 @@ set(pcsx2Headers
 	Memory.h
 	MemoryTypes.h
 	Patch.h
-	PCSX2Base.h
 	PerformanceMetrics.h
 	PrecompiledHeader.h
 	R3000A.h
@@ -201,7 +186,6 @@ set(pcsx2Headers
 	ShaderCacheVersion.h
 	Sifcmd.h
 	Sif.h
-	SingleRegisterTypes.h
 	SIO/Sio.h
 	SIO/Sio2.h
 	SIO/Sio0.h
@@ -213,11 +197,9 @@ set(pcsx2Headers
 	SPR.h
 	StateWrapper.h
 	SysForwardDefs.h
-	System.h
 	Vif_Dma.h
 	Vif.h
 	Vif_Unpack.h
-	VirtualMemory.h
 	VMManager.h
 	vtlb.h
 	VUflags.h
@@ -280,6 +262,10 @@ set(pcsx2SPU2Sources
 	SPU2/spu2freeze.cpp
 	SPU2/spu2sys.cpp
 	SPU2/Wavedump_wav.cpp
+)
+
+set(pcsx2SPU2SourcesUnshared
+	SPU2/ReverbResample.cpp
 )
 
 # SPU2 headers
@@ -456,6 +442,7 @@ set(pcsx2PADSources
 	SIO/Pad/PadBase.cpp
 	SIO/Pad/PadDualshock2.cpp
 	SIO/Pad/PadGuitar.cpp
+	SIO/Pad/PadPopn.cpp
 	SIO/Pad/PadNotConnected.cpp
 )
 set(pcsx2PADHeaders
@@ -463,6 +450,7 @@ set(pcsx2PADHeaders
 	SIO/Pad/PadBase.h
 	SIO/Pad/PadDualshock2.h
 	SIO/Pad/PadGuitar.h
+	SIO/Pad/PadPopn.h
 	SIO/Pad/PadNotConnected.h
 	SIO/Pad/PadTypes.h
 )
@@ -485,7 +473,6 @@ set(pcsx2GSSourcesUnshared
 
 set(pcsx2GSSources
 	GS/GS.cpp
-	GS/GSAlignedClass.cpp
 	GS/GSCapture.cpp
 	GS/GSClut.cpp
 	GS/GSDrawingContext.cpp
@@ -512,9 +499,7 @@ set(pcsx2GSSources
 	GS/Renderers/HW/GSTextureCache.cpp
 	GS/Renderers/HW/GSTextureReplacementLoaders.cpp
 	GS/Renderers/HW/GSTextureReplacements.cpp
-	GS/Renderers/SW/GSNewCodeGenerator.cpp
 	GS/Renderers/SW/GSTextureCacheSW.cpp
-	GS/Renderers/SW/GSTextureSW.cpp
 	)
 
 # GS headers
@@ -530,6 +515,7 @@ set(pcsx2GSHeaders
 	GS/GSGL.h
 	GS/GSRegs.h
 	GS/GS.h
+	GS/GSJobQueue.h
 	GS/GSLocalMemory.h
 	GS/GSLzma.h
 	GS/GSPerfMon.h
@@ -537,8 +523,6 @@ set(pcsx2GSHeaders
 	GS/GSRingHeap.h
 	GS/GSState.h
 	GS/GSTables.h
-	GS/GSThread_CXX11.h
-	GS/GSThread.h
 	GS/GSUtil.h
 	GS/GSVector.h
 	GS/GSVector4.h
@@ -571,7 +555,6 @@ set(pcsx2GSHeaders
 	GS/Renderers/SW/GSSetupPrimCodeGenerator.h
 	GS/Renderers/SW/GSSetupPrimCodeGenerator.all.h
 	GS/Renderers/SW/GSTextureCacheSW.h
-	GS/Renderers/SW/GSTextureSW.h
 	GS/Renderers/SW/GSVertexSW.h
 	)
 
@@ -684,7 +667,6 @@ if(WIN32)
 		GS/Renderers/DX11/D3D11ShaderCache.cpp
 		GS/Renderers/DX11/GSDevice11.cpp
 		GS/Renderers/DX11/GSTexture11.cpp
-		GS/Renderers/DX11/GSTextureFX11.cpp
 		GS/Renderers/DX12/D3D12Builders.cpp
 		GS/Renderers/DX12/D3D12DescriptorHeapManager.cpp
 		GS/Renderers/DX12/D3D12ShaderCache.cpp
@@ -704,7 +686,7 @@ if(WIN32)
 		GS/Renderers/DX12/GSDevice12.h
 		GS/Renderers/DX12/GSTexture12.h
 	)
-elseif(Linux)
+elseif(LINUX)
 	list(APPEND pcsx2USBSources
 		USB/usb-eyetoy/cam-linux.cpp
 	)
@@ -765,7 +747,7 @@ if(DISABLE_ADVANCE_SIMD)
 	# Note: ld64 (macOS's linker) does not act the same way when presented with .a files, unless linked with `-force_load` (cmake WHOLE_ARCHIVE).
 	set(is_first_isa "1")
 	foreach(isa "sse4" "avx" "avx2")
-		add_library(GS-${isa} STATIC ${pcsx2GSSourcesUnshared} ${pcsx2IPUSourcesUnshared})
+		add_library(GS-${isa} STATIC ${pcsx2GSSourcesUnshared} ${pcsx2IPUSourcesUnshared} ${pcsx2SPU2SourcesUnshared})
 		target_link_libraries(GS-${isa} PRIVATE PCSX2_FLAGS)
 		target_compile_definitions(GS-${isa} PRIVATE MULTI_ISA_UNSHARED_COMPILATION=isa_${isa} MULTI_ISA_IS_FIRST=${is_first_isa} ${pcsx2_defs_${isa}})
 		target_compile_options(GS-${isa} PRIVATE ${compile_options_${isa}})
@@ -781,6 +763,7 @@ if(DISABLE_ADVANCE_SIMD)
 else()
 	list(APPEND pcsx2GSSources ${pcsx2GSSourcesUnshared})
 	list(APPEND pcsx2IPUSources ${pcsx2IPUSourcesUnshared})
+	list(APPEND pcsx2SPU2Sources ${pcsx2SPU2SourcesUnshared})
 endif()
 
 # DebugTools sources
@@ -826,6 +809,7 @@ set(pcsx2ImGuiSources
 
 set(pcsx2ImGuiHeaders
 	ImGui/FullscreenUI.h
+	ImGui/ImGuiAnimated.h
 	ImGui/ImGuiFullscreen.h
 	ImGui/ImGuiManager.h
 	ImGui/ImGuiOverlays.h
@@ -973,7 +957,6 @@ set(pcsx2x86Sources
 	x86/iR3000Atables.cpp
 	x86/iR5900Analysis.cpp
 	x86/iR5900Misc.cpp
-	x86/ir5900tables.cpp
 	x86/ix86-32/iCore.cpp
 	x86/ix86-32/iR5900.cpp
 	x86/ix86-32/iR5900Arit.cpp
@@ -1083,8 +1066,7 @@ target_sources(PCSX2 PRIVATE
 )
 
 # platform sources
-# Linux
-if(Linux)
+if(LINUX)
 	target_sources(PCSX2 PRIVATE
 		${pcsx2LinuxSources}
 		${pcsx2LinuxHeaders}
@@ -1096,8 +1078,7 @@ if(Linux)
 	)
 endif()
 
-# Windows
-if(Windows)
+if(WIN32)
 	target_sources(PCSX2 PRIVATE
 		${pcsx2WindowsSources}
 	)
@@ -1106,8 +1087,7 @@ endif()
 target_sources(PCSX2 PRIVATE ${pcsx2USBSources} ${pcsx2USBHeaders})
 target_link_libraries(PCSX2_FLAGS INTERFACE jpgd)
 
-# MacOSX/BSD
-if(UNIX AND NOT Linux)
+if(APPLE OR BSD)
 	if(APPLE)
 		target_sources(PCSX2 PRIVATE
 			${pcsx2OSXSources})
@@ -1124,7 +1104,7 @@ target_link_libraries(PCSX2_FLAGS INTERFACE
 	imgui
 	fmt::fmt
 	ryml
-	chdr-static
+	libchdr
 	libzip::zip
 	cpuinfo
 	zydis
@@ -1133,6 +1113,7 @@ target_link_libraries(PCSX2_FLAGS INTERFACE
 	discord-rpc
 	SDL2::SDL2
 	ZLIB::ZLIB
+	LZ4::LZ4
 	SoundTouch::SoundTouch
 	PNG::PNG
 	LibLZMA::LibLZMA
@@ -1191,6 +1172,7 @@ target_compile_definitions(PCSX2_FLAGS INTERFACE
 	XBYAK_NO_EXCEPTION
 )
 
+set_source_files_properties(PrecompiledHeader.cpp PROPERTIES HEADER_FILE_ONLY TRUE)
 if(COMMAND target_precompile_headers)
 	message("Using precompiled headers.")
 	target_precompile_headers(PCSX2_FLAGS INTERFACE PrecompiledHeader.h)
@@ -1223,11 +1205,6 @@ if (APPLE)
 	find_library(METAL_LIBRARY Metal)
 	find_library(QUARTZCORE_LIBRARY QuartzCore)
 	target_link_libraries(PCSX2_FLAGS INTERFACE ${METAL_LIBRARY} ${QUARTZCORE_LIBRARY})
-
-	# MacOS defaults to having a maximum protection of the __DATA segment of rw (non-executable)
-	# We have a bunch of page-sized arrays in bss that we use for jit
-	# Obviously not being able to make those arrays executable would be a problem
-	target_link_options(PCSX2_FLAGS INTERFACE -Wl,-segprot,__DATA,rwx,rw)
 endif()
 
 set_property(GLOBAL PROPERTY PCSX2_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR})

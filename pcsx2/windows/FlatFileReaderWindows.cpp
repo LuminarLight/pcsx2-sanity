@@ -1,21 +1,10 @@
-/*  PCSX2 - PS2 Emulator for PCs
- *  Copyright (C) 2002-2014  PCSX2 Dev Team
- *
- *  PCSX2 is free software: you can redistribute it and/or modify it under the terms
- *  of the GNU Lesser General Public License as published by the Free Software Found-
- *  ation, either version 3 of the License, or (at your option) any later version.
- *
- *  PCSX2 is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
- *  without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
- *  PURPOSE.  See the GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License along with PCSX2.
- *  If not, see <http://www.gnu.org/licenses/>.
- */
+// SPDX-FileCopyrightText: 2002-2023 PCSX2 Dev Team
+// SPDX-License-Identifier: LGPL-3.0+
 
-#include "PrecompiledHeader.h"
 #include "AsyncFileReader.h"
+
 #include "common/StringUtil.h"
+#include "common/Error.h"
 
 FlatFileReader::FlatFileReader(bool shareWrite) : shareWrite(shareWrite)
 {
@@ -25,14 +14,14 @@ FlatFileReader::FlatFileReader(bool shareWrite) : shareWrite(shareWrite)
 	asyncInProgress = false;
 }
 
-FlatFileReader::~FlatFileReader(void)
+FlatFileReader::~FlatFileReader()
 {
 	Close();
 }
 
-bool FlatFileReader::Open(std::string fileName)
+bool FlatFileReader::Open(std::string filename, Error* error)
 {
-	m_filename = std::move(fileName);
+	m_filename = std::move(filename);
 
 	hEvent = CreateEvent(NULL, TRUE, FALSE, NULL);
 
@@ -49,10 +38,16 @@ bool FlatFileReader::Open(std::string fileName)
 		FILE_FLAG_SEQUENTIAL_SCAN | FILE_FLAG_OVERLAPPED,
 		NULL);
 
-	return hOverlappedFile != INVALID_HANDLE_VALUE;
+	if (hOverlappedFile == INVALID_HANDLE_VALUE)
+	{
+		Error::SetWin32(error, GetLastError());
+		return false;
+	}
+
+	return true;
 }
 
-int FlatFileReader::ReadSync(void* pBuffer, uint sector, uint count)
+int FlatFileReader::ReadSync(void* pBuffer, u32 sector, u32 count)
 {
 	//LARGE_INTEGER offset;
 	//offset.QuadPart = sector * (__int64)m_blocksize;
@@ -68,7 +63,7 @@ int FlatFileReader::ReadSync(void* pBuffer, uint sector, uint count)
 	return FinishRead();
 }
 
-void FlatFileReader::BeginRead(void* pBuffer, uint sector, uint count)
+void FlatFileReader::BeginRead(void* pBuffer, u32 sector, u32 count)
 {
 	LARGE_INTEGER offset;
 	offset.QuadPart = sector * (s64)m_blocksize + m_dataoffset;
@@ -84,7 +79,7 @@ void FlatFileReader::BeginRead(void* pBuffer, uint sector, uint count)
 	asyncInProgress = true;
 }
 
-int FlatFileReader::FinishRead(void)
+int FlatFileReader::FinishRead()
 {
 	DWORD bytes;
 
@@ -98,12 +93,12 @@ int FlatFileReader::FinishRead(void)
 	return bytes;
 }
 
-void FlatFileReader::CancelRead(void)
+void FlatFileReader::CancelRead()
 {
 	CancelIo(hOverlappedFile);
 }
 
-void FlatFileReader::Close(void)
+void FlatFileReader::Close()
 {
 	if(asyncInProgress)
 		CancelRead();
@@ -118,10 +113,10 @@ void FlatFileReader::Close(void)
 	hEvent = INVALID_HANDLE_VALUE;
 }
 
-uint FlatFileReader::GetBlockCount(void) const
+u32 FlatFileReader::GetBlockCount(void) const
 {
 	LARGE_INTEGER fileSize;
-	fileSize.LowPart = GetFileSize(hOverlappedFile, (DWORD*)&(fileSize.HighPart));
+	fileSize.LowPart = GetFileSize(hOverlappedFile, reinterpret_cast<DWORD*>(&fileSize.HighPart));
 
-	return (int)(fileSize.QuadPart / m_blocksize);
+	return static_cast<u32>(fileSize.QuadPart / m_blocksize);
 }

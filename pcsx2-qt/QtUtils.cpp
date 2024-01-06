@@ -1,19 +1,5 @@
-/*  PCSX2 - PS2 Emulator for PCs
- *  Copyright (C) 2002-2022  PCSX2 Dev Team
- *
- *  PCSX2 is free software: you can redistribute it and/or modify it under the terms
- *  of the GNU Lesser General Public License as published by the Free Software Found-
- *  ation, either version 3 of the License, or (at your option) any later version.
- *
- *  PCSX2 is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
- *  without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
- *  PURPOSE.  See the GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License along with PCSX2.
- *  If not, see <http://www.gnu.org/licenses/>.
- */
-
-#include "PrecompiledHeader.h"
+// SPDX-FileCopyrightText: 2002-2023 PCSX2 Dev Team
+// SPDX-License-Identifier: LGPL-3.0+
 
 #include "QtUtils.h"
 
@@ -95,8 +81,8 @@ namespace QtUtils
 		const int min_column_width = header->minimumSectionSize();
 		const int scrollbar_width = ((view->verticalScrollBar() && view->verticalScrollBar()->isVisible()) ||
 										view->verticalScrollBarPolicy() == Qt::ScrollBarAlwaysOn) ?
-                                        view->verticalScrollBar()->width() :
-                                        0;
+										view->verticalScrollBar()->width() :
+										0;
 		int num_flex_items = 0;
 		int total_width = 0;
 		int column_index = 0;
@@ -115,8 +101,8 @@ namespace QtUtils
 
 		const int flex_width =
 			(num_flex_items > 0) ?
-                std::max((view->contentsRect().width() - total_width - scrollbar_width) / num_flex_items, 1) :
-                0;
+				std::max((view->contentsRect().width() - total_width - scrollbar_width) / num_flex_items, 1) :
+				0;
 
 		column_index = 0;
 		for (const int spec_width : widths)
@@ -269,4 +255,35 @@ namespace QtUtils
 		return wi;
 	}
 
+	QString AbstractItemModelToCSV(QAbstractItemModel* model, int role, bool useQuotes)
+	{
+		QString csv;
+		// Header
+		for (int col = 0; col < model->columnCount(); col++)
+		{
+			// Encapsulate value in quotes so that commas don't break the column count.
+			QString headerLine = model->headerData(col, Qt::Horizontal, Qt::DisplayRole).toString();
+			csv += useQuotes ? QString("\"%1\"").arg(headerLine) : headerLine;
+			if (col < model->columnCount() - 1)
+				csv += ",";
+		}
+
+		csv += "\n";
+
+		// Data
+		for (int row = 0; row < model->rowCount(); row++)
+		{
+			for (int col = 0; col < model->columnCount(); col++)
+			{
+				// Encapsulate value in quotes so that commas don't break the column count.
+				QString dataLine = model->data(model->index(row, col), role).toString();
+				csv += useQuotes ? QString("\"%1\"").arg(dataLine) : dataLine;
+
+				if (col < model->columnCount() - 1)
+					csv += ",";
+			}
+			csv += "\n";
+		}
+		return csv;
+	}
 } // namespace QtUtils

@@ -1,17 +1,5 @@
-/*  PCSX2 - PS2 Emulator for PCs
- *  Copyright (C) 2002-2010  PCSX2 Dev Team
- *
- *  PCSX2 is free software: you can redistribute it and/or modify it under the terms
- *  of the GNU Lesser General Public License as published by the Free Software Found-
- *  ation, either version 3 of the License, or (at your option) any later version.
- *
- *  PCSX2 is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
- *  without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
- *  PURPOSE.  See the GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License along with PCSX2.
- *  If not, see <http://www.gnu.org/licenses/>.
- */
+// SPDX-FileCopyrightText: 2002-2023 PCSX2 Dev Team
+// SPDX-License-Identifier: LGPL-3.0+
 
 #pragma once
 
@@ -135,8 +123,8 @@ enum CDVD_MODE_TYPE
 	MODE_DVDROM,
 };
 
-static const uint tbl_FastSeekDelta[3] =
-	{
+static constexpr uint tbl_FastSeekDelta[3] =
+{
 		4371,  // CD-ROM
 		14764, // Single-layer DVD-ROM
 		13360  // dual-layer DVD-ROM [currently unused]
@@ -144,34 +132,31 @@ static const uint tbl_FastSeekDelta[3] =
 
 // if a seek is within this many blocks, read instead of seek.
 // These values are arbitrary assumptions.  Not sure what the real PS2 uses.
-static const uint tbl_ContigiousSeekDelta[3] =
-	{
+static constexpr uint tbl_ContigiousSeekDelta[3] =
+{
 		8,  // CD-ROM
 		16, // single-layer DVD-ROM
 		16, // dual-layer DVD-ROM [currently unused]
 };
 
-// Note: DVD read times are modified to be faster, because games seem to be a lot more
-// concerned with accurate(ish) seek delays and less concerned with actual block read speeds.
-// Translation: it's a minor speedhack :D
+static constexpr uint PSX_CD_READSPEED = 153600;   // Bytes per second, rough values from outer CD (CAV).
+static constexpr uint PSX_DVD_READSPEED = 1382400; // Bytes per second, rough values from outer DVD (CAV).
 
-static const uint PSX_CD_READSPEED = 153600;   // Bytes per second, rough values from outer CD (CAV).
-static const uint PSX_DVD_READSPEED = 1382400; // Bytes per second, rough values from outer DVD (CAV).
+static constexpr uint CD_SECTORS_PERSECOND = 75;
+static constexpr uint DVD_SECTORS_PERSECOND = 675;
 
-static const uint CD_SECTORS_PERSECOND = 75;
-static const uint DVD_SECTORS_PERSECOND = 675;
+// Rotations per minute.
+static constexpr uint CD_MIN_ROTATION_X1 = 214;
+static constexpr uint CD_MAX_ROTATION_X1 = 497;
 
-static const uint CD_MIN_ROTATION_X1 = 214;
-static const uint CD_MAX_ROTATION_X1 = 497;
-
-static const uint DVD_MIN_ROTATION_X1 = 570;
-static const uint DVD_MAX_ROTATION_X1 = 1515;
+static constexpr uint DVD_MIN_ROTATION_X1 = 570;
+static constexpr uint DVD_MAX_ROTATION_X1 = 1515;
 
 // Legacy Note: FullSeek timing causes many games to load very slow, but it likely not the real problem.
 // Games breaking with it set to PSXCLK*40 : "wrath unleashed" and "Shijou Saikyou no Deshi Kenichi".
 
-static const uint Cdvd_FullSeek_Cycles = (PSXCLK * 100) / 1000; // average number of cycles per fullseek (100ms)
-static const uint Cdvd_FastSeek_Cycles = (PSXCLK * 30) / 1000;  // average number of cycles per fastseek (37ms)
+static constexpr uint Cdvd_FullSeek_Cycles = (36864000UL * 100UL) / 1000UL; // average number of cycles per fullseek (100ms)
+static constexpr uint Cdvd_FastSeek_Cycles = (36864000UL * 30UL) / 1000UL;  // average number of cycles per fastseek (37ms)
 bool trayState = 0; // Used to check if the CD tray status has changed since the last time
 
 static const char* mg_zones[8] = {"Japan", "USA", "Europe", "Oceania", "Asia", "Russia", "China", "Mexico"};

@@ -1,19 +1,6 @@
-/*  PCSX2 - PS2 Emulator for PCs
- *  Copyright (C) 2002-2023 PCSX2 Dev Team
- *
- *  PCSX2 is free software: you can redistribute it and/or modify it under the terms
- *  of the GNU Lesser General Public License as published by the Free Software Found-
- *  ation, either version 3 of the License, or (at your option) any later version.
- *
- *  PCSX2 is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
- *  without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
- *  PURPOSE.  See the GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License along with PCSX2.
- *  If not, see <http://www.gnu.org/licenses/>.
- */
+// SPDX-FileCopyrightText: 2002-2023 PCSX2 Dev Team
+// SPDX-License-Identifier: LGPL-3.0+
 
-#include "PrecompiledHeader.h"
 #include "GS/GSCapture.h"
 #include "GS/GSPng.h"
 #include "GS/GSUtil.h"
@@ -25,9 +12,11 @@
 #include "Host.h"
 #include "IconsFontAwesome5.h"
 #include "common/Assertions.h"
+#include "common/Console.h"
 #include "common/BitUtils.h"
 #include "common/DynamicLibrary.h"
 #include "common/Path.h"
+#include "common/SmallString.h"
 #include "common/StringUtil.h"
 #include "common/Threading.h"
 
@@ -35,6 +24,13 @@
 #include <condition_variable>
 #include <mutex>
 #include <string>
+
+#if defined(_MSC_VER)
+#pragma warning(disable:4996) // warning C4996: 'AVCodecContext::channels': was declared deprecated
+#elif defined (__clang__)
+// We're using deprecated fields because we're targeting multiple ffmpeg versions.
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+#endif
 
 extern "C" {
 #include "libavcodec/avcodec.h"
@@ -49,8 +45,6 @@ extern "C" {
 #include "libswresample/swresample.h"
 #include "libswresample/version.h"
 }
-
-#include <mutex>
 
 // Compatibility with both ffmpeg 4.x and 5.x.
 #if (LIBAVFORMAT_VERSION_MAJOR < 59)
@@ -371,7 +365,7 @@ bool GSCapture::BeginCapture(float fps, GSVector2i recommendedResolution, float 
 
 	std::unique_lock<std::mutex> lock(s_lock);
 
-	ASSERT(fps != 0);
+	pxAssert(fps != 0);
 
 	InternalEndCapture(lock);
 
@@ -845,6 +839,10 @@ bool GSCapture::DeliverVideoFrame(GSTexture* stex)
 			Console.Error("GSCapture: Failed to create %x%d download texture", stex->GetWidth(), stex->GetHeight());
 			return false;
 		}
+
+#ifdef PCSX2_DEVBUILD
+		pf.tex->SetDebugName(TinyString::from_fmt("GSCapture {}x{} Download Texture", stex->GetWidth(), stex->GetHeight()));
+#endif
 	}
 
 	const GSVector4i rc(0, 0, stex->GetWidth(), stex->GetHeight());

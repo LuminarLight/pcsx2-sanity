@@ -1,19 +1,5 @@
-/*  PCSX2 - PS2 Emulator for PCs
- *  Copyright (C) 2002-2022  PCSX2 Dev Team
- *
- *  PCSX2 is free software: you can redistribute it and/or modify it under the terms
- *  of the GNU Lesser General Public License as published by the Free Software Found-
- *  ation, either version 3 of the License, or (at your option) any later version.
- *
- *  PCSX2 is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
- *  without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
- *  PURPOSE.  See the GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License along with PCSX2.
- *  If not, see <http://www.gnu.org/licenses/>.
- */
-
-#include "PrecompiledHeader.h"
+// SPDX-FileCopyrightText: 2002-2023 PCSX2 Dev Team
+// SPDX-License-Identifier: LGPL-3.0+
 
 #include <QtCore/QDir>
 #include <QtWidgets/QInputDialog>
@@ -23,15 +9,16 @@
 #include <algorithm>
 #include "fmt/format.h"
 
+#include "common/Console.h"
 #include "common/StringUtil.h"
 
 #include "pcsx2/Host.h"
 #include "pcsx2/SIO/Pad/Pad.h"
 
 #include "Settings/ControllerBindingWidgets.h"
-#include "Settings/ControllerSettingsDialog.h"
+#include "Settings/ControllerSettingsWindow.h"
 #include "Settings/ControllerSettingWidgetBinder.h"
-#include "Settings/SettingsDialog.h"
+#include "Settings/SettingsWindow.h"
 #include "QtHost.h"
 #include "QtUtils.h"
 #include "SettingWidgetBinder.h"
@@ -40,7 +27,7 @@
 #include "ui_USBBindingWidget_GTForce.h"
 #include "ui_USBBindingWidget_GunCon2.h"
 
-ControllerBindingWidget::ControllerBindingWidget(QWidget* parent, ControllerSettingsDialog* dialog, u32 port)
+ControllerBindingWidget::ControllerBindingWidget(QWidget* parent, ControllerSettingsWindow* dialog, u32 port)
 	: QWidget(parent)
 	, m_dialog(dialog)
 	, m_config_section(fmt::format("Pad{}", port + 1))
@@ -120,6 +107,10 @@ void ControllerBindingWidget::onTypeChanged()
 	else if (cinfo->type == Pad::ControllerType::Guitar)
 	{
 		m_bindings_widget = ControllerBindingWidget_Guitar::createInstance(this);
+	}
+	else if (cinfo->type == Pad::ControllerType::Popn)
+	{
+		m_bindings_widget = ControllerBindingWidget_Popn::createInstance(this);
 	}
 	else
 	{
@@ -325,7 +316,7 @@ ControllerMacroEditWidget::ControllerMacroEditWidget(ControllerMacroWidget* pare
 {
 	m_ui.setupUi(this);
 
-	ControllerSettingsDialog* dialog = m_bwidget->getDialog();
+	ControllerSettingsWindow* dialog = m_bwidget->getDialog();
 	const std::string& section = m_bwidget->getConfigSection();
 	const Pad::ControllerInfo* cinfo = Pad::GetControllerInfo(m_bwidget->getControllerType());
 	if (!cinfo)
@@ -445,7 +436,7 @@ void ControllerMacroEditWidget::updateFrequencyText()
 
 void ControllerMacroEditWidget::updateBinds()
 {
-	ControllerSettingsDialog* dialog = m_bwidget->getDialog();
+	ControllerSettingsWindow* dialog = m_bwidget->getDialog();
 	const Pad::ControllerInfo* cinfo = Pad::GetControllerInfo(m_bwidget->getControllerType());
 	if (!cinfo)
 		return;
@@ -495,7 +486,7 @@ void ControllerMacroEditWidget::updateBinds()
 //////////////////////////////////////////////////////////////////////////
 
 ControllerCustomSettingsWidget::ControllerCustomSettingsWidget(std::span<const SettingInfo> settings, std::string config_section,
-	std::string config_prefix, const char* translation_ctx, ControllerSettingsDialog* dialog, QWidget* parent_widget)
+	std::string config_prefix, const char* translation_ctx, ControllerSettingsWindow* dialog, QWidget* parent_widget)
 	: QWidget(parent_widget)
 	, m_settings(settings)
 	, m_config_section(std::move(config_section))
@@ -595,7 +586,7 @@ void ControllerCustomSettingsWidget::createSettingWidgets(const char* translatio
 				sb->setSingleStep(si.IntegerStepValue());
 				if (si.format)
 				{
-					const auto [prefix, suffix] = getPrefixAndSuffixForIntFormat(QString::fromUtf8(si.format));
+					const auto [prefix, suffix] = getPrefixAndSuffixForIntFormat(qApp->translate(translation_ctx, si.format));
 					sb->setPrefix(prefix);
 					sb->setSuffix(suffix);
 				}
@@ -631,7 +622,7 @@ void ControllerCustomSettingsWidget::createSettingWidgets(const char* translatio
 
 				if (si.format)
 				{
-					const auto [prefix, suffix, decimals] = getPrefixAndSuffixForFloatFormat(QString::fromUtf8(si.format));
+					const auto [prefix, suffix, decimals] = getPrefixAndSuffixForFloatFormat(qApp->translate(translation_ctx, si.format));
 					sb->setPrefix(prefix);
 					if (decimals >= 0)
 						sb->setDecimals(decimals);
@@ -910,9 +901,30 @@ ControllerBindingWidget_Base* ControllerBindingWidget_Guitar::createInstance(Con
 	return new ControllerBindingWidget_Guitar(parent);
 }
 
+ControllerBindingWidget_Popn::ControllerBindingWidget_Popn(ControllerBindingWidget* parent)
+	: ControllerBindingWidget_Base(parent)
+{
+	m_ui.setupUi(this);
+	initBindingWidgets();
+}
+
+ControllerBindingWidget_Popn::~ControllerBindingWidget_Popn()
+{
+}
+
+QIcon ControllerBindingWidget_Popn::getIcon() const
+{
+	return QIcon::fromTheme("Popn-line");
+}
+
+ControllerBindingWidget_Base* ControllerBindingWidget_Popn::createInstance(ControllerBindingWidget* parent)
+{
+	return new ControllerBindingWidget_Popn(parent);
+}
+
 //////////////////////////////////////////////////////////////////////////
 
-USBDeviceWidget::USBDeviceWidget(QWidget* parent, ControllerSettingsDialog* dialog, u32 port)
+USBDeviceWidget::USBDeviceWidget(QWidget* parent, ControllerSettingsWindow* dialog, u32 port)
 	: QWidget(parent)
 	, m_dialog(dialog)
 	, m_config_section(fmt::format("USB{}", port + 1))

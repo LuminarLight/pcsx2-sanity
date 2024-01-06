@@ -1,17 +1,5 @@
-/*  PCSX2 - PS2 Emulator for PCs
- *  Copyright (C) 2002-2022  PCSX2 Dev Team
- *
- *  PCSX2 is free software: you can redistribute it and/or modify it under the terms
- *  of the GNU Lesser General Public License as published by the Free Software Found-
- *  ation, either version 3 of the License, or (at your option) any later version.
- *
- *  PCSX2 is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
- *  without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR
- *  PURPOSE.  See the GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License along with PCSX2.
- *  If not, see <http://www.gnu.org/licenses/>.
- */
+// SPDX-FileCopyrightText: 2002-2023 PCSX2 Dev Team
+// SPDX-License-Identifier: LGPL-3.0+
 
 #pragma once
 
@@ -24,12 +12,13 @@
 #include "ui_ControllerBindingWidget.h"
 #include "ui_ControllerBindingWidget_DualShock2.h"
 #include "ui_ControllerBindingWidget_Guitar.h"
+#include "ui_ControllerBindingWidget_Popn.h"
 #include "ui_ControllerMacroWidget.h"
 #include "ui_ControllerMacroEditWidget.h"
 #include "ui_USBDeviceWidget.h"
 
 class InputBindingWidget;
-class ControllerSettingsDialog;
+class ControllerSettingsWindow;
 class ControllerCustomSettingsWidget;
 class ControllerMacroWidget;
 class ControllerMacroEditWidget;
@@ -42,12 +31,12 @@ class ControllerBindingWidget final : public QWidget
 	Q_OBJECT
 
 public:
-	ControllerBindingWidget(QWidget* parent, ControllerSettingsDialog* dialog, u32 port);
+	ControllerBindingWidget(QWidget* parent, ControllerSettingsWindow* dialog, u32 port);
 	~ControllerBindingWidget();
 
 	QIcon getIcon() const;
 
-	__fi ControllerSettingsDialog* getDialog() const { return m_dialog; }
+	__fi ControllerSettingsWindow* getDialog() const { return m_dialog; }
 	__fi const std::string& getConfigSection() const { return m_config_section; }
 	__fi Pad::ControllerType getControllerType() const { return m_controller_type; }
 	__fi u32 getPortNumber() const { return m_port_number; }
@@ -67,7 +56,7 @@ private:
 
 	Ui::ControllerBindingWidget m_ui;
 
-	ControllerSettingsDialog* m_dialog;
+	ControllerSettingsWindow* m_dialog;
 
 	std::string m_config_section;
 	Pad::ControllerType m_controller_type;
@@ -97,7 +86,7 @@ private:
 	void createWidgets(ControllerBindingWidget* parent);
 
 	Ui::ControllerMacroWidget m_ui;
-	ControllerSettingsDialog* m_dialog;
+	ControllerSettingsWindow* m_dialog;
 	std::array<ControllerMacroEditWidget*, NUM_MACROS> m_macros;
 };
 
@@ -142,7 +131,7 @@ class ControllerCustomSettingsWidget : public QWidget
 
 public:
 	ControllerCustomSettingsWidget(std::span<const SettingInfo> settings, std::string config_section, std::string config_prefix,
-		const char* translation_ctx, ControllerSettingsDialog* dialog, QWidget* parent_widget);
+		const char* translation_ctx, ControllerSettingsWindow* dialog, QWidget* parent_widget);
 	~ControllerCustomSettingsWidget();
 
 private Q_SLOTS:
@@ -154,7 +143,7 @@ private:
 	std::span<const SettingInfo> m_settings;
 	std::string m_config_section;
 	std::string m_config_prefix;
-	ControllerSettingsDialog* m_dialog;
+	ControllerSettingsWindow* m_dialog;
 };
 
 //////////////////////////////////////////////////////////////////////////
@@ -168,7 +157,7 @@ public:
 	ControllerBindingWidget_Base(ControllerBindingWidget* parent);
 	virtual ~ControllerBindingWidget_Base();
 
-	__fi ControllerSettingsDialog* getDialog() const { return static_cast<ControllerBindingWidget*>(parent())->getDialog(); }
+	__fi ControllerSettingsWindow* getDialog() const { return static_cast<ControllerBindingWidget*>(parent())->getDialog(); }
 	__fi const std::string& getConfigSection() const { return static_cast<ControllerBindingWidget*>(parent())->getConfigSection(); }
 	__fi Pad::ControllerType getControllerType() const { return static_cast<ControllerBindingWidget*>(parent())->getControllerType(); }
 	__fi u32 getPortNumber() const { return static_cast<ControllerBindingWidget*>(parent())->getPortNumber(); }
@@ -211,6 +200,22 @@ private:
 	Ui::ControllerBindingWidget_Guitar m_ui;
 };
 
+class ControllerBindingWidget_Popn final : public ControllerBindingWidget_Base
+{
+	Q_OBJECT
+
+public:
+	ControllerBindingWidget_Popn(ControllerBindingWidget* parent);
+	~ControllerBindingWidget_Popn();
+
+	QIcon getIcon() const override;
+
+	static ControllerBindingWidget_Base* createInstance(ControllerBindingWidget* parent);
+
+private:
+	Ui::ControllerBindingWidget_Popn m_ui;
+};
+
 //////////////////////////////////////////////////////////////////////////
 
 class USBDeviceWidget final : public QWidget
@@ -218,12 +223,12 @@ class USBDeviceWidget final : public QWidget
 	Q_OBJECT
 
 public:
-	USBDeviceWidget(QWidget* parent, ControllerSettingsDialog* dialog, u32 port);
+	USBDeviceWidget(QWidget* parent, ControllerSettingsWindow* dialog, u32 port);
 	~USBDeviceWidget();
 
 	QIcon getIcon() const;
 
-	__fi ControllerSettingsDialog* getDialog() const { return m_dialog; }
+	__fi ControllerSettingsWindow* getDialog() const { return m_dialog; }
 	__fi const std::string& getConfigSection() const { return m_config_section; }
 	__fi const std::string& getDeviceType() const { return m_device_type; }
 	__fi u32 getPortNumber() const { return m_port_number; }
@@ -244,7 +249,7 @@ private:
 
 	Ui::USBDeviceWidget m_ui;
 
-	ControllerSettingsDialog* m_dialog;
+	ControllerSettingsWindow* m_dialog;
 
 	std::string m_config_section;
 	std::string m_device_type;
@@ -263,7 +268,7 @@ public:
 	USBBindingWidget(USBDeviceWidget* parent);
 	~USBBindingWidget() override;
 
-	__fi ControllerSettingsDialog* getDialog() const { return static_cast<USBDeviceWidget*>(parent())->getDialog(); }
+	__fi ControllerSettingsWindow* getDialog() const { return static_cast<USBDeviceWidget*>(parent())->getDialog(); }
 	__fi const std::string& getConfigSection() const { return static_cast<USBDeviceWidget*>(parent())->getConfigSection(); }
 	__fi const std::string& getDeviceType() const { return static_cast<USBDeviceWidget*>(parent())->getDeviceType(); }
 	__fi u32 getPortNumber() const { return static_cast<USBDeviceWidget*>(parent())->getPortNumber(); }
