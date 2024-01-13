@@ -1093,41 +1093,16 @@ void recDIVhelper2(int regd, int regt) // Doesn't sets flags
 	ClampValues(regd);
 }
 
-alignas(16) static FPControlRegister roundmode_nearest, roundmode_neg;
+alignas(16) static FPControlRegister roundmode_nearest;
 
 void recDIV_S_xmm(int info)
 {
 	EE::Profiler.EmitOp(eeOpcode::DIV_F);
-	bool roundmodeFlag = false;
 	int t0reg = _allocTempXMMreg(XMMT_FPS);
 	//Console.WriteLn("DIV");
 
-	if (CHECK_FPUNEGDIVHACK)
-	{
-		if (EmuConfig.Cpu.FPUFPCR.GetRoundMode() != FPRoundMode::NegativeInfinity)
-		{
-			// Set roundmode to nearest since it isn't already
-			//Console.WriteLn("div to negative inf");
-
-			roundmode_neg = EmuConfig.Cpu.FPUFPCR;
-			roundmode_neg.SetRoundMode(FPRoundMode::NegativeInfinity);
-			xLDMXCSR(ptr32[&roundmode_neg.bitmask]);
-			roundmodeFlag = true;
-		}
-	}
-	else
-	{
-		if (EmuConfig.Cpu.FPUFPCR.GetRoundMode() != FPRoundMode::Nearest)
-		{
-			// Set roundmode to nearest since it isn't already
-			//Console.WriteLn("div to nearest");
-
-			roundmode_nearest = EmuConfig.Cpu.FPUFPCR;
-			roundmode_nearest.SetRoundMode(FPRoundMode::Nearest);
-			xLDMXCSR(ptr32[&roundmode_nearest.bitmask]);
-			roundmodeFlag = true;
-		}
-	}
+	if (EmuConfig.Cpu.FPUFPCR.bitmask != EmuConfig.Cpu.FPUDivFPCR.bitmask)
+		xLDMXCSR(ptr32[&EmuConfig.Cpu.FPUDivFPCR.bitmask]);
 
 	switch (info & (PROCESS_EE_S | PROCESS_EE_T))
 	{
@@ -1190,8 +1165,10 @@ void recDIV_S_xmm(int info)
 				recDIVhelper2(EEREC_D, t0reg);
 			break;
 	}
-	if (roundmodeFlag)
+
+	if (EmuConfig.Cpu.FPUFPCR.bitmask != EmuConfig.Cpu.FPUDivFPCR.bitmask)
 		xLDMXCSR(ptr32[&EmuConfig.Cpu.FPUFPCR.bitmask]);
+
 	_freeXMMreg(t0reg);
 }
 
@@ -1890,10 +1867,9 @@ void recRSQRThelper2(int regd, int t0reg) // Preforms the RSQRT function when re
 void recRSQRT_S_xmm(int info)
 {
 	EE::Profiler.EmitOp(eeOpcode::RSQRT_F);
-	// iFPUd (Full mode) sets roundmode to nearest for rSQRT.
-	// Should this do the same, or should Full mode leave roundmode alone? --air
 
-	int t0reg = _allocTempXMMreg(XMMT_FPS);
+	// RSQRT doesn't change the round mode, because RSQRTSS ignores the rounding mode in MXCSR.
+	const int t0reg = _allocTempXMMreg(XMMT_FPS);
 	//Console.WriteLn("FPU: RSQRT");
 
 	switch (info & (PROCESS_EE_S | PROCESS_EE_T))

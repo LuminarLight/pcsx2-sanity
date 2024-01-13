@@ -54,6 +54,9 @@ public:
 		VMLock(const VMLock&) = delete;
 		~VMLock();
 
+		VMLock& operator=(VMLock&& lock);
+		VMLock& operator=(const VMLock&) = delete;
+
 		/// Returns the parent widget, which can be used for any popup dialogs.
 		__fi QWidget* getDialogParent() const { return m_dialog_parent; }
 
@@ -194,15 +197,14 @@ protected:
 	void changeEvent(QEvent* event) override;
 	void dragEnterEvent(QDragEnterEvent* event) override;
 	void dropEvent(QDropEvent* event) override;
+	void moveEvent(QMoveEvent* event) override;
+	void resizeEvent(QResizeEvent* event) override;
 
 #ifdef _WIN32
 	bool nativeEvent(const QByteArray& eventType, void* message, qintptr* result) override;
 #endif
 
 private:
-	static void setStyleFromSettings();
-	static void setIconThemeFromStyle();
-
 	void setupAdditionalUi();
 	void connectSignals();
 	void createRendererSwitchMenu();
@@ -220,6 +222,7 @@ private:
 	void updateDisplayRelatedActions(bool has_surface, bool render_to_main, bool fullscreen);
 	void updateGameDependentActions();
 	void updateStatusBarWidgetVisibility();
+	void updateAdvancedSettingsVisibility();
 	void updateWindowTitle();
 	void updateWindowState(bool force_visible = false);
 	void setProgressBar(int current, int total);
@@ -289,13 +292,6 @@ private:
 	QLabel* m_status_resolution_widget = nullptr;
 
 	QMenu* m_settings_toolbar_menu = nullptr;
-
-	QString m_current_title;
-	QString m_current_elf_override;
-	QString m_current_disc_path;
-	QString m_current_disc_serial;
-	quint32 m_current_disc_crc;
-	quint32 m_current_running_crc;
 
 	bool m_display_created = false;
 	bool m_relative_mouse_mode = false;

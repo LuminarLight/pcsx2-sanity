@@ -57,10 +57,14 @@ GamePatchSettingsWidget::GamePatchSettingsWidget(SettingsWindow* dialog, QWidget
 
 	setUnlabeledPatchesWarningVisibility(false);
 
-	connect(m_ui.reload, &QPushButton::clicked, this, &GamePatchSettingsWidget::onReloadClicked);
-	connect(m_ui.allCRCsCheckbox, &QCheckBox::stateChanged, this, &GamePatchSettingsWidget::onReloadClicked);
 	SettingsInterface* sif = m_dialog->getSettingsInterface();
 	SettingWidgetBinder::BindWidgetToBoolSetting(sif, m_ui.allCRCsCheckbox, "EmuCore", "ShowPatchesForAllCRCs", false);
+
+	connect(m_ui.reload, &QPushButton::clicked, this, &GamePatchSettingsWidget::onReloadClicked);
+	connect(m_ui.allCRCsCheckbox, &QCheckBox::stateChanged, this, &GamePatchSettingsWidget::reloadList);
+
+	dialog->registerWidgetHelp(m_ui.allCRCsCheckbox, tr("Show Patches For All CRCs"), tr("Checked"),
+		tr("Toggles scanning patch files for all CRCs of the game. With this enabled available patches for the game serial with different CRCs will also be loaded."));
 
 	reloadList();
 }
@@ -133,6 +137,7 @@ void GamePatchSettingsWidget::reloadList()
 	m_ui.scrollArea->setWidget(container);
 }
 
-void GamePatchSettingsWidget::setUnlabeledPatchesWarningVisibility(bool visible) {
+void GamePatchSettingsWidget::setUnlabeledPatchesWarningVisibility(bool visible)
+{
 	m_ui.unlabeledPatchWarning->setVisible(visible);
 }

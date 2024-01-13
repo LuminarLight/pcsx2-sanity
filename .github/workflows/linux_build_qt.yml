@@ -6,6 +6,9 @@ on:
       jobName:
         required: true
         type: string
+      artifactPrefixName:
+        required: true
+        type: string
       os:
         required: false
         type: string
@@ -33,6 +36,10 @@ on:
         type: string
         default: https://github.com/PCSX2/pcsx2_patches/releases/latest/download
       fetchTags:
+        required: false
+        type: boolean
+        default: false
+      stableBuild:
         required: false
         type: boolean
         default: false
@@ -69,12 +76,18 @@ jobs:
         if: ${{ inputs.fetchTags }}
         run: git fetch --tags --no-recurse-submodules
 
+      - name: Add stable release identifier file
+        if: ${{ inputs.stableBuild == true || inputs.stableBuild == 'true' }}
+        shell: bash
+        run: |
+          echo "#define DEFAULT_UPDATER_CHANNEL \"stable\"" > ./pcsx2-qt/DefaultUpdaterChannel.h
+          cat ./pcsx2-qt/DefaultUpdaterChannel.h
+
       - name: Prepare Artifact Metadata
         id: artifact-metadata
         shell: bash
         env:
-          OS: linux
-          ARCH: ${{ inputs.platform }}
+          PREFIX: ${{ inputs.artifactPrefixName }}
           EVENT_NAME: ${{ github.event_name }}
           PR_TITLE: ${{ github.event.pull_request.title }}
           PR_NUM: ${{ github.event.pull_request.number }}
@@ -142,7 +155,7 @@ jobs:
 
       - name: Upload artifact
         if: inputs.buildAppImage == true
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.artifact-metadata.outputs.artifact-name }}
           path: ci-artifacts

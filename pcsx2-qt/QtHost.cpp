@@ -4,8 +4,10 @@
 #include "AutoUpdaterDialog.h"
 #include "DisplayWidget.h"
 #include "GameList/GameListWidget.h"
+#include "LogWindow.h"
 #include "MainWindow.h"
 #include "QtHost.h"
+#include "QtProgressCallback.h"
 #include "QtUtils.h"
 #include "SetupWizardDialog.h"
 #include "svnrev.h"
@@ -25,7 +27,6 @@
 #include "pcsx2/ImGui/ImGuiManager.h"
 #include "pcsx2/ImGui/ImGuiOverlays.h"
 #include "pcsx2/Input/InputManager.h"
-#include "pcsx2/LogSink.h"
 #include "pcsx2/MTGS.h"
 #include "pcsx2/PerformanceMetrics.h"
 #include "pcsx2/SysForwardDefs.h"
@@ -35,6 +36,7 @@
 #include "common/Console.h"
 #include "common/CrashHandler.h"
 #include "common/FileSystem.h"
+#include "common/HTTPDownloader.h"
 #include "common/Path.h"
 #include "common/SettingsWrapper.h"
 #include "common/StringUtil.h"
@@ -52,6 +54,8 @@
 #include <csignal>
 
 static constexpr u32 SETTINGS_SAVE_DELAY = 1000;
+static constexpr const char* RUNTIME_RESOURCES_URL =
+	"https://github.com/PCSX2/pcsx2-windows-dependencies/releases/download/runtime-resources/";
 
 EmuThread* g_emu_thread = nullptr;
 
@@ -60,6 +64,7 @@ EmuThread* g_emu_thread = nullptr;
 //////////////////////////////////////////////////////////////////////////
 namespace QtHost
 {
+	static void InitializeEarlyConsole();
 	static void PrintCommandLineVersion();
 	static void PrintCommandLineHelp(const std::string_view& progname);
 	static std::shared_ptr<VMBootParameters>& AutoBoot(std::shared_ptr<VMBootParameters>& autoboot);
@@ -69,6 +74,7 @@ namespace QtHost
 	static void HookSignals();
 	static void RegisterTypes();
 	static bool RunSetupWizard();
+	static std::optional<bool> DownloadFile(QWidget* parent, const QString& title, std::string url, std::vector<u8>* data);
 } // namespace QtHost
 
 //////////////////////////////////////////////////////////////////////////
@@ -95,11 +101,6 @@ EmuThread::EmuThread(QThread* ui_thread)
 }
 
 EmuThread::~EmuThread() = default;
-
-bool EmuThread::isOnEmuThread() const
-{
-	return QThread::currentThread() == this;
-}
 
 void EmuThread::start()
 {
@@ -496,7 +497,7 @@ void EmuThread::setFullscreen(bool fullscreen, bool allow_render_to_main)
 	MTGS::WaitGS();
 
 	// If we're using exclusive fullscreen, the refresh rate may have changed.
-	UpdateVSyncRate(true);
+	VMManager::UpdateTargetSpeed();
 }
 
 void EmuThread::setSurfaceless(bool surfaceless)
@@ -990,7 +991,7 @@ void EmuThread::updatePerformanceMetrics(bool force)
 		QMetaObject::invokeMethod(g_main_window->getStatusVerboseWidget(), "setText", Qt::QueuedConnection, Q_ARG(const QString&, gs_stat));
 	}
 
-	const GSRendererType renderer = GSConfig.Renderer;
+	const GSRendererType renderer = GSGetCurrentRenderer(); // Reading from GS thread, therefore racey, but it's just visual.
 	const float speed = std::round(PerformanceMetrics::GetSpeed());
 	const float gfps = std::round(PerformanceMetrics::GetInternalFPS());
 	const float vfps = std::round(PerformanceMetrics::GetFPS());
@@ -1235,9 +1236,10 @@ bool QtHost::InitializeConfig()
 	s_run_setup_wizard =
 		s_run_setup_wizard || s_base_settings_interface->GetBoolValue("UI", "SetupWizardIncomplete", false);
 
-	LogSink::SetBlockSystemConsole(QtHost::InNoGUIMode());
+	// TODO: -nogui console block?
+
 	VMManager::Internal::LoadStartupSettings();
-	InstallTranslator();
+	InstallTranslator(nullptr);
 	return true;
 }
 
@@ -1365,9 +1367,97 @@ QString QtHost::GetAppConfigSuffix()
 #endif
 }
 
+QIcon QtHost::GetAppIcon()
+{
+	return QIcon(QStringLiteral(":/icons/AppIcon64.png"));
+}
+
 QString QtHost::GetResourcesBasePath()
 {
 	return QString::fromStdString(EmuFolders::Resources);
+}
+
+std::string QtHost::GetRuntimeDownloadedResourceURL(std::string_view name)
+{
+	return fmt::format("{}/{}", RUNTIME_RESOURCES_URL, HTTPDownloader::URLEncode(name));
+}
+
+std::optional<bool> QtHost::DownloadFile(QWidget* parent, const QString& title, std::string url, std::vector<u8>* data)
+{
+	static constexpr u32 HTTP_POLL_INTERVAL = 10;
+
+	std::unique_ptr<HTTPDownloader> http = HTTPDownloader::Create(Host::GetHTTPUserAgent());
+	if (!http)
+	{
+		QMessageBox::critical(parent, qApp->translate("EmuThread", "Error"), qApp->translate("EmuThread", "Failed to create HTTPDownloader."));
+		return false;
+	}
+
+	std::optional<bool> download_result;
+	const std::string::size_type url_file_part_pos = url.rfind('/');
+	QtModalProgressCallback progress(parent);
+	progress.GetDialog().setLabelText(
+		qApp->translate("EmuThread", "Downloading %1...").arg(QtUtils::StringViewToQString(
+			std::string_view(url).substr((url_file_part_pos >= 0) ? (url_file_part_pos + 1) : 0))));
+	progress.GetDialog().setWindowTitle(title);
+	progress.GetDialog().setWindowIcon(GetAppIcon());
+	progress.SetCancellable(true);
+
+	http->CreateRequest(
+		std::move(url), [parent, data, &download_result](s32 status_code, const std::string&, std::vector<u8> hdata) {
+			if (status_code == HTTPDownloader::HTTP_STATUS_CANCELLED)
+				return;
+
+			if (status_code != HTTPDownloader::HTTP_STATUS_OK)
+			{
+				QMessageBox::critical(parent, qApp->translate("EmuThread", "Error"),
+					qApp->translate("EmuThread", "Download failed with HTTP status code %1.").arg(status_code));
+				download_result = false;
+				return;
+			}
+
+			if (hdata.empty())
+			{
+				QMessageBox::critical(parent, qApp->translate("EmuThread", "Error"),
+					qApp->translate("EmuThread", "Download failed: Data is empty.").arg(status_code));
+
+			download_result = false;
+			return;
+			}
+
+			*data = std::move(hdata);
+			download_result = true;
+		},
+		&progress);
+
+	// Block until completion.
+	while (http->HasAnyRequests())
+	{
+		QApplication::processEvents(QEventLoop::AllEvents, HTTP_POLL_INTERVAL);
+		http->PollRequests();
+	}
+
+	return download_result;
+}
+
+bool QtHost::DownloadFile(QWidget* parent, const QString& title, std::string url, const std::string& path)
+{
+	std::vector<u8> data;
+	if (!DownloadFile(parent, title, std::move(url), &data).value_or(false) || data.empty())
+		return false;
+
+	// Directory may not exist. Create it.
+	const std::string directory(Path::GetDirectory(path));
+	if ((!directory.empty() && !FileSystem::DirectoryExists(directory.c_str()) &&
+			!FileSystem::CreateDirectoryPath(directory.c_str(), true)) ||
+		!FileSystem::WriteBinaryFile(path.c_str(), data.data(), data.size()))
+	{
+		QMessageBox::critical(parent, qApp->translate("EmuThread", "Error"),
+			qApp->translate("EmuThread", "Failed to write '%1'.").arg(QString::fromStdString(path)));
+		return false;
+	}
+
+	return true;
 }
 
 void Host::ReportErrorAsync(const std::string_view& title, const std::string_view& message)
@@ -1482,12 +1572,27 @@ static void SignalHandler(int signal)
 #endif
 }
 
+#ifdef _WIN32
+
+static BOOL WINAPI ConsoleCtrlHandler(DWORD dwCtrlType)
+{
+	if (dwCtrlType != CTRL_C_EVENT)
+		return FALSE;
+
+	SignalHandler(SIGTERM);
+	return TRUE;
+}
+
+#endif
+
 void QtHost::HookSignals()
 {
 	std::signal(SIGINT, SignalHandler);
 	std::signal(SIGTERM, SignalHandler);
 
-#ifdef __linux__
+#if defined(_WIN32)
+	SetConsoleCtrlHandler(ConsoleCtrlHandler, FALSE);
+#elif defined(__linux__)
 	// Ignore SIGCHLD by default on Linux, since we kick off aplay asynchronously.
 	struct sigaction sa_chld = {};
 	sigemptyset(&sa_chld.sa_mask);
@@ -1496,9 +1601,14 @@ void QtHost::HookSignals()
 #endif
 }
 
+void QtHost::InitializeEarlyConsole()
+{
+	Log::SetConsoleOutputLevel(LOGLEVEL_DEBUG);
+}
+
 void QtHost::PrintCommandLineVersion()
 {
-	LogSink::InitializeEarlyConsole();
+	InitializeEarlyConsole();
 	std::fprintf(stderr, "%s\n", (GetAppNameAndVersion() + GetAppConfigSuffix()).toUtf8().constData());
 	std::fprintf(stderr, "https://pcsx2.net/\n");
 	std::fprintf(stderr, "\n");
@@ -1622,7 +1732,7 @@ bool QtHost::ParseCommandLineOptions(const QStringList& args, std::shared_ptr<VM
 			}
 			else if (CHECK_ARG_PARAM(QStringLiteral("-logfile")))
 			{
-				LogSink::SetFileLogPath((++it)->toStdString());
+				VMManager::Internal::SetFileLogPath((++it)->toStdString());
 				continue;
 			}
 			else if (CHECK_ARG(QStringLiteral("-bios")))
@@ -1643,7 +1753,7 @@ bool QtHost::ParseCommandLineOptions(const QStringList& args, std::shared_ptr<VM
 			}
 			else if (CHECK_ARG(QStringLiteral("-earlyconsolelog")))
 			{
-				LogSink::InitializeEarlyConsole();
+				InitializeEarlyConsole();
 				continue;
 			}
 			else if (CHECK_ARG(QStringLiteral("-bigpicture")))
@@ -1705,7 +1815,6 @@ bool QtHost::ParseCommandLineOptions(const QStringList& args, std::shared_ptr<VM
 	// or disc, we don't want to actually start.
 	if (autoboot && !autoboot->source_type.has_value() && autoboot->filename.empty() && autoboot->elf_override.empty())
 	{
-		LogSink::InitializeEarlyConsole();
 		Console.Warning("Skipping autoboot due to no boot parameters.");
 		autoboot.reset();
 	}
@@ -1805,6 +1914,9 @@ int main(int argc, char* argv[])
 	// Set theme before creating any windows.
 	QtHost::UpdateApplicationTheme();
 
+	// Start logging early.
+	LogWindow::updateSettings();
+
 	// Start up the CPU thread.
 	QtHost::HookSignals();
 	EmuThread::start();
@@ -1829,7 +1941,11 @@ int main(int argc, char* argv[])
 
 	// Don't bother showing the window in no-gui mode.
 	if (!s_nogui_mode)
+	{
 		g_main_window->show();
+		g_main_window->raise();
+		g_main_window->activateWindow();
+	}
 
 	// Initialize big picture mode if requested.
 	if (s_start_fullscreen_ui)
@@ -1862,9 +1978,6 @@ shutdown_and_exit:
 	// Ensure config is written. Prevents destruction order issues.
 	if (s_base_settings_interface->IsDirty())
 		s_base_settings_interface->Save();
-
-	// Ensure emulog is flushed.
-	LogSink::CloseFileLog();
 
 	return result;
 }

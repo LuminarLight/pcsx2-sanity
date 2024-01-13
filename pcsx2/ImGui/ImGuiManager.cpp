@@ -393,10 +393,8 @@ bool ImGuiManager::LoadFontData()
 {
 	if (s_standard_font_data.empty())
 	{
-		std::optional<std::vector<u8>> font_data =
-			s_font_path.empty() ? FileSystem::ReadBinaryFile(
-									  Path::Combine(EmuFolders::Resources, "fonts" FS_OSPATH_SEPARATOR_STR "Roboto-Regular.ttf").c_str()) :
-								  FileSystem::ReadBinaryFile(s_font_path.c_str());
+		pxAssertRel(!s_font_path.empty(), "Font path has not been set.");
+		std::optional<std::vector<u8>> font_data = FileSystem::ReadBinaryFile(s_font_path.c_str());
 		if (!font_data.has_value())
 			return false;
 
@@ -406,7 +404,7 @@ bool ImGuiManager::LoadFontData()
 	if (s_fixed_font_data.empty())
 	{
 		std::optional<std::vector<u8>> font_data = FileSystem::ReadBinaryFile(
-			Path::Combine(EmuFolders::Resources, "fonts" FS_OSPATH_SEPARATOR_STR "RobotoMono-Medium.ttf").c_str());
+			EmuFolders::GetOverridableResourcePath("fonts" FS_OSPATH_SEPARATOR_STR "RobotoMono-Medium.ttf").c_str());
 		if (!font_data.has_value())
 			return false;
 
@@ -416,7 +414,7 @@ bool ImGuiManager::LoadFontData()
 	if (s_icon_fa_font_data.empty())
 	{
 		std::optional<std::vector<u8>> font_data =
-			FileSystem::ReadBinaryFile(Path::Combine(EmuFolders::Resources, "fonts" FS_OSPATH_SEPARATOR_STR "fa-solid-900.ttf").c_str());
+			FileSystem::ReadBinaryFile(EmuFolders::GetOverridableResourcePath("fonts" FS_OSPATH_SEPARATOR_STR "fa-solid-900.ttf").c_str());
 		if (!font_data.has_value())
 			return false;
 
@@ -426,7 +424,7 @@ bool ImGuiManager::LoadFontData()
 	if (s_icon_pf_font_data.empty())
 	{
 		std::optional<std::vector<u8>> font_data =
-			FileSystem::ReadBinaryFile(Path::Combine(EmuFolders::Resources, "fonts" FS_OSPATH_SEPARATOR_STR "promptfont.otf").c_str());
+			FileSystem::ReadBinaryFile(EmuFolders::GetOverridableResourcePath("fonts" FS_OSPATH_SEPARATOR_STR "promptfont.otf").c_str());
 		if (!font_data.has_value())
 			return false;
 
@@ -836,6 +834,11 @@ ImFont* ImGuiManager::GetLargeFont()
 bool ImGuiManager::WantsTextInput()
 {
 	return s_imgui_wants_text.load(std::memory_order_acquire);
+}
+
+bool ImGuiManager::WantsMouseInput()
+{
+	return s_imgui_wants_mouse.load(std::memory_order_acquire);
 }
 
 void ImGuiManager::AddTextInput(std::string str)

@@ -159,6 +159,7 @@ namespace EmuFolders
 	std::string Cheats;
 	std::string Patches;
 	std::string Resources;
+	std::string UserResources;
 	std::string Cache;
 	std::string Covers;
 	std::string GameSettings;
@@ -500,12 +501,17 @@ bool Pcsx2Config::CpuOptions::operator!=(const CpuOptions& right) const
 
 bool Pcsx2Config::CpuOptions::operator==(const CpuOptions& right) const
 {
-	return OpEqu(FPUFPCR) && OpEqu(VU0FPCR) && OpEqu(VU1FPCR) && OpEqu(AffinityControlMode) && OpEqu(Recompiler);
+	return OpEqu(FPUFPCR) && OpEqu(FPUDivFPCR) && OpEqu(VU0FPCR) && OpEqu(VU1FPCR) && OpEqu(AffinityControlMode) && OpEqu(Recompiler);
 }
 
 Pcsx2Config::CpuOptions::CpuOptions()
 {
 	FPUFPCR = DEFAULT_FPU_FP_CONTROL_REGISTER;
+
+	// Rounding defaults to nearest to match old behavior.
+	// TODO: Make it default to the same as the rest of the FPU operations, at some point.
+	FPUDivFPCR = FPControlRegister(DEFAULT_FPU_FP_CONTROL_REGISTER).SetRoundMode(FPRoundMode::Nearest);
+
 	VU0FPCR = DEFAULT_VU_FP_CONTROL_REGISTER;
 	VU1FPCR = DEFAULT_VU_FP_CONTROL_REGISTER;
 	AffinityControlMode = 0;
@@ -535,6 +541,7 @@ void Pcsx2Config::CpuOptions::LoadSave(SettingsWrapper& wrap)
 	};
 
 	read_fpcr(FPUFPCR, "FPU");
+	read_fpcr(FPUDivFPCR, "FPUDiv");
 	read_fpcr(VU0FPCR, "VU0");
 	read_fpcr(VU1FPCR, "VU1");
 
@@ -1283,7 +1290,6 @@ bool Pcsx2Config::DEV9Options::HostEntry::operator!=(const HostEntry& right) con
 static const char* const tbl_GamefixNames[] =
 	{
 		"FpuMul",
-		"FpuNegDiv",
 		"GoemonTlb",
 		"SoftwareRendererFMV",
 		"SkipMPEG",
@@ -1327,7 +1333,6 @@ void Pcsx2Config::GamefixOptions::Set(GamefixId id, bool enabled)
 		// clang-format off
 		case Fix_VuAddSub:            VuAddSubHack            = enabled; break;
 		case Fix_FpuMultiply:         FpuMulHack              = enabled; break;
-		case Fix_FpuNegDiv:           FpuNegDivHack           = enabled; break;
 		case Fix_XGKick:              XgKickHack              = enabled; break;
 		case Fix_EETiming:            EETimingHack            = enabled; break;
 		case Fix_InstantDMA:          InstantDMAHack          = enabled; break;
@@ -1366,7 +1371,6 @@ bool Pcsx2Config::GamefixOptions::Get(GamefixId id) const
 		// clang-format off
 		case Fix_VuAddSub:            return VuAddSubHack;
 		case Fix_FpuMultiply:         return FpuMulHack;
-		case Fix_FpuNegDiv:           return FpuNegDivHack;
 		case Fix_XGKick:              return XgKickHack;
 		case Fix_EETiming:            return EETimingHack;
 		case Fix_InstantDMA:          return InstantDMAHack;
@@ -1395,7 +1399,6 @@ void Pcsx2Config::GamefixOptions::LoadSave(SettingsWrapper& wrap)
 
 	SettingsWrapBitBool(VuAddSubHack);
 	SettingsWrapBitBool(FpuMulHack);
-	SettingsWrapBitBool(FpuNegDivHack);
 	SettingsWrapBitBool(XgKickHack);
 	SettingsWrapBitBool(EETimingHack);
 	SettingsWrapBitBool(InstantDMAHack);
@@ -1980,6 +1983,7 @@ void EmuFolders::SetDefaults(SettingsInterface& si)
 	si.SetStringValue("Folders", "Logs", "logs");
 	si.SetStringValue("Folders", "Cheats", "cheats");
 	si.SetStringValue("Folders", "Patches", "patches");
+	si.SetStringValue("Folders", "UserResources", "resources");
 	si.SetStringValue("Folders", "Cache", "cache");
 	si.SetStringValue("Folders", "Textures", "textures");
 	si.SetStringValue("Folders", "InputProfiles", "inputprofiles");
@@ -2005,6 +2009,7 @@ void EmuFolders::LoadConfig(SettingsInterface& si)
 	Patches = LoadPathFromSettings(si, DataRoot, "Patches", "patches");
 	Covers = LoadPathFromSettings(si, DataRoot, "Covers", "covers");
 	GameSettings = LoadPathFromSettings(si, DataRoot, "GameSettings", "gamesettings");
+	UserResources = LoadPathFromSettings(si, DataRoot, "UserResources", "resources");
 	Cache = LoadPathFromSettings(si, DataRoot, "Cache", "cache");
 	Textures = LoadPathFromSettings(si, DataRoot, "Textures", "textures");
 	InputProfiles = LoadPathFromSettings(si, DataRoot, "InputProfiles", "inputprofiles");
@@ -2019,6 +2024,8 @@ void EmuFolders::LoadConfig(SettingsInterface& si)
 	Console.WriteLn("Patches Directory: %s", Patches.c_str());
 	Console.WriteLn("Covers Directory: %s", Covers.c_str());
 	Console.WriteLn("Game Settings Directory: %s", GameSettings.c_str());
+	Console.WriteLn("Resources Directory: %s", Resources.c_str());
+	Console.WriteLn("User Resources Directory: %s", UserResources.c_str());
 	Console.WriteLn("Cache Directory: %s", Cache.c_str());
 	Console.WriteLn("Textures Directory: %s", Textures.c_str());
 	Console.WriteLn("Input Profile Directory: %s", InputProfiles.c_str());
@@ -2037,6 +2044,7 @@ bool EmuFolders::EnsureFoldersExist()
 	result = FileSystem::CreateDirectoryPath(Patches.c_str(), false) && result;
 	result = FileSystem::CreateDirectoryPath(Covers.c_str(), false) && result;
 	result = FileSystem::CreateDirectoryPath(GameSettings.c_str(), false) && result;
+	result = FileSystem::CreateDirectoryPath(UserResources.c_str(), false) && result;
 	result = FileSystem::CreateDirectoryPath(Cache.c_str(), false) && result;
 	result = FileSystem::CreateDirectoryPath(Textures.c_str(), false) && result;
 	result = FileSystem::CreateDirectoryPath(InputProfiles.c_str(), false) && result;
@@ -2044,11 +2052,27 @@ bool EmuFolders::EnsureFoldersExist()
 	return result;
 }
 
-std::FILE* EmuFolders::OpenLogFile(const std::string_view& name, const char* mode)
+std::FILE* EmuFolders::OpenLogFile(std::string_view name, const char* mode)
 {
 	if (name.empty())
 		return nullptr;
 
 	const std::string path(Path::Combine(Logs, name));
 	return FileSystem::OpenCFile(path.c_str(), mode);
+}
+
+std::string EmuFolders::GetOverridableResourcePath(std::string_view name)
+{
+	std::string upath = Path::Combine(UserResources, name);
+	if (FileSystem::FileExists(upath.c_str()))
+	{
+		if (UserResources != Resources)
+			Console.Warning(fmt::format("Using user-provided resource file {}", name));
+	}
+	else
+	{
+		upath = Path::Combine(Resources, name);
+	}
+
+	return upath;
 }

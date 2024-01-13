@@ -17,7 +17,6 @@ GameCheatSettingsWidget::GameCheatSettingsWidget(SettingsWindow* dialog, QWidget
 	: m_dialog(dialog)
 {
 	m_ui.setupUi(this);
-	QtUtils::ResizeColumnsForTreeView(m_ui.cheatList, {300, 100, -1});
 
 	reloadList();
 
@@ -33,6 +32,9 @@ GameCheatSettingsWidget::GameCheatSettingsWidget(SettingsWindow* dialog, QWidget
 	connect(m_ui.enableAll, &QPushButton::clicked, this, [this]() { setStateForAll(true); });
 	connect(m_ui.disableAll, &QPushButton::clicked, this, [this]() { setStateForAll(false); });
 	connect(m_ui.allCRCsCheckbox, &QCheckBox::stateChanged, this, &GameCheatSettingsWidget::onReloadClicked);
+
+	dialog->registerWidgetHelp(m_ui.allCRCsCheckbox, tr("Show Cheats For All CRCs"), tr("Checked"),
+		tr("Toggles scanning patch files for all CRCs of the game. With this enabled available patches for the game serial with different CRCs will also be loaded."));
 }
 
 GameCheatSettingsWidget::~GameCheatSettingsWidget() = default;
@@ -88,6 +90,12 @@ void GameCheatSettingsWidget::disableAllCheats()
 	SettingsInterface* si = m_dialog->getSettingsInterface();
 	si->ClearSection(Patch::CHEATS_CONFIG_SECTION);
 	si->Save();
+}
+
+void GameCheatSettingsWidget::resizeEvent(QResizeEvent* event)
+{
+	QWidget::resizeEvent(event);
+	QtUtils::ResizeColumnsForTreeView(m_ui.cheatList, {320, 100, -1});
 }
 
 void GameCheatSettingsWidget::setCheatEnabled(std::string name, bool enabled, bool save_and_reload_settings)

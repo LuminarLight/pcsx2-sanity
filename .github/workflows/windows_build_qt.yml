@@ -6,6 +6,9 @@ on:
       jobName:
         required: true
         type: string
+      artifactPrefixName:
+        required: true
+        type: string
       os:
         required: false
         type: string
@@ -37,6 +40,10 @@ on:
         required: false
         type: boolean
         default: false
+      stableBuild:
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   build_windows_qt:
@@ -58,14 +65,18 @@ jobs:
         if: ${{ inputs.fetchTags }}
         run: git fetch --tags --no-recurse-submodules
 
+      - name: Add stable release identifier file
+        if: ${{ inputs.stableBuild == true || inputs.stableBuild == 'true' }}
+        shell: bash
+        run: |
+          echo "#define DEFAULT_UPDATER_CHANNEL \"stable\"" > ./pcsx2-qt/DefaultUpdaterChannel.h
+          cat ./pcsx2-qt/DefaultUpdaterChannel.h
+
       - name: Prepare Artifact Metadata
         id: artifact-metadata
         shell: bash
         env:
-          OS: windows
-          BUILD_SYSTEM: ${{ inputs.buildSystem }}
-          ARCH: ${{ inputs.platform }}
-          SIMD: ${{ inputs.simd }}
+          PREFIX: ${{ inputs.artifactPrefixName }}
           EVENT_NAME: ${{ github.event_name }}
           PR_TITLE: ${{ github.event.pull_request.title }}
           PR_NUM: ${{ github.event.pull_request.number }}
@@ -122,7 +133,7 @@ jobs:
           cmake --build build --config Release --target unittests
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.artifact-metadata.outputs.artifact-name }}
           path: |
@@ -136,7 +147,7 @@ jobs:
             !./bin/**/*.lib
 
       - name: Upload artifact - with symbols
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ${{ steps.artifact-metadata.outputs.artifact-name }}-symbols
           path: ./bin/**/*.pdb
