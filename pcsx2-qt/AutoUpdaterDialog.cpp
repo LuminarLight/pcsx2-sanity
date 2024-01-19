@@ -307,6 +307,49 @@ void AutoUpdaterDialog::getLatestReleaseComplete(s32 status_code, std::vector<u8
 #endif
 }
 
+void AutoUpdaterDialog::queueGetMessage()
+{
+#ifdef AUTO_UPDATER_SUPPORTED
+	if (!ensureHttpReady())
+	{
+		emit updateCheckCompleted();
+		return;
+	}
+
+	m_http->CreateRequest(QStringLiteral(LATEST_RELEASE_URL).arg(getCurrentUpdateTag()).toStdString(),
+		std::bind(&AutoUpdaterDialog::getMessageComplete, this, std::placeholders::_1, std::placeholders::_3));
+#endif
+}
+
+void AutoUpdaterDialog::getMessageComplete(s32 status_code, std::vector<u8> data)
+{
+#ifdef AUTO_UPDATER_SUPPORTED
+	if (status_code == HTTPDownloader::HTTP_STATUS_OK)
+	{
+		QJsonParseError parse_error;
+		QJsonDocument doc(QJsonDocument::fromJson(QByteArray(reinterpret_cast<const char*>(data.data()), data.size()), &parse_error));
+		if (doc.isObject())
+		{
+			const QJsonObject doc_object(doc.object());
+			QString changes_html = tr("<h2>Message:</h2>");
+			changes_html += QStringLiteral("<p>");
+			changes_html += doc_object["body"].toString();
+			changes_html += "</p>";
+			m_ui.updateMessage->setText(changes_html);
+			m_ui.updateMessage->setFixedHeight(m_ui.updateMessage->document()->size().height() + 5); // The +5 is there because otherwise it is too small and even shows scrollbar.
+		}
+		else
+		{
+			reportError("Update message JSON is not an object");
+		}
+	}
+	else
+	{
+		reportError("Failed to download update message: %d", status_code);
+	}
+#endif
+}
+
 void AutoUpdaterDialog::queueGetChanges()
 {
 #ifdef AUTO_UPDATER_SUPPORTED
@@ -329,7 +372,7 @@ void AutoUpdaterDialog::getChangesComplete(s32 status_code, std::vector<u8> data
 		{
 			const QJsonObject doc_object(doc.object());
 
-			QString changes_html = tr("<h2>Changes:</h2>");
+			QString changes_html = tr("<h2>All Commits:</h2>");
 			changes_html += QStringLiteral("<ul>");
 
 			const QJsonArray commits(doc_object["commits"].toArray());
@@ -478,7 +521,9 @@ void AutoUpdaterDialog::checkIfUpdateNeeded()
 	m_ui.currentVersion->setText(tr("Current Version: %1 (%2)").arg(getCurrentVersion()).arg(getCurrentVersionDate()));
 	m_ui.newVersion->setText(tr("New Version: %1 (%2)").arg(m_latest_version).arg(m_latest_version_timestamp.toString()));
 	m_ui.downloadSize->setText(tr("Download Size: %1 MB").arg(static_cast<double>(m_download_size) / 1048576.0, 0, 'f', 2));
+	m_ui.updateMessage->setText(tr("Loading..."));
 	m_ui.updateNotes->setText(tr("Loading..."));
+	queueGetMessage();
 	queueGetChanges();
 
 	// We have to defer this, because it comes back through the timer/HTTP callback...

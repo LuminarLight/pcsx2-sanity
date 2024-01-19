@@ -58,6 +58,9 @@ private:
 	void queueGetChanges();
 	void getChangesComplete(s32 status_code, std::vector<u8> data);
 
+	void queueGetMessage();
+	void getMessageComplete(s32 status_code, std::vector<u8> data);
+
 	bool processUpdate(const std::vector<u8>& data, QProgressDialog& progress);
 #if defined(_WIN32)
 	bool doesUpdaterNeedElevation(const std::string& application_dir) const;

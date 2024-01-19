@@ -84,6 +84,9 @@
     </widget>
    </item>
    <item>
+    <widget class="QTextBrowser" name="updateMessage"/>
+   </item>
+   <item>
     <widget class="QTextBrowser" name="updateNotes"/>
    </item>
    <item>
