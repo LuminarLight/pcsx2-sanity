@@ -29,7 +29,6 @@
 #include "pcsx2/Input/InputManager.h"
 #include "pcsx2/MTGS.h"
 #include "pcsx2/PerformanceMetrics.h"
-#include "pcsx2/SysForwardDefs.h"
 #include "pcsx2/VMManager.h"
 
 #include "common/Assertions.h"
@@ -88,6 +87,7 @@ static bool s_start_fullscreen_ui = false;
 static bool s_start_fullscreen_ui_fullscreen = false;
 static bool s_test_config_and_exit = false;
 static bool s_run_setup_wizard = false;
+static bool s_cleanup_after_update = false;
 static bool s_boot_and_debug = false;
 
 //////////////////////////////////////////////////////////////////////////
@@ -1117,6 +1117,11 @@ void Host::OnCoverDownloaderOpenRequested()
 	emit g_emu_thread->onCoverDownloaderOpenRequested();
 }
 
+void Host::OnCreateMemoryCardOpenRequested()
+{
+	emit g_emu_thread->onCreateMemoryCardOpenRequested();
+}
+
 void Host::VSyncOnCPUThread()
 {
 	g_emu_thread->getEventLoop()->processEvents(QEventLoop::AllEvents);
@@ -1336,24 +1341,7 @@ bool Host::RequestResetSettings(bool folders, bool core, bool controllers, bool 
 
 QString QtHost::GetAppNameAndVersion()
 {
-	QString ret;
-	if constexpr (!PCSX2_isReleaseVersion && GIT_TAGGED_COMMIT)
-	{
-		ret = QStringLiteral("PCSX2-Sanity Nightly - " GIT_TAG);
-	}
-	else if constexpr (PCSX2_isReleaseVersion)
-	{
-#define APPNAME_STRINGIZE(x) #x
-		ret = QStringLiteral(
-			"PCSX2-Sanity " APPNAME_STRINGIZE(PCSX2_VersionHi) "." APPNAME_STRINGIZE(PCSX2_VersionMid) "." APPNAME_STRINGIZE(PCSX2_VersionLo));
-#undef APPNAME_STRINGIZE
-	}
-	else
-	{
-		return QStringLiteral("PCSX2-Sanity " GIT_REV);
-	}
-
-	return ret;
+	return QStringLiteral("PCSX2-Sanity " GIT_REV);
 }
 
 QString QtHost::GetAppConfigSuffix()
@@ -1398,7 +1386,7 @@ std::optional<bool> QtHost::DownloadFile(QWidget* parent, const QString& title, 
 	QtModalProgressCallback progress(parent);
 	progress.GetDialog().setLabelText(
 		qApp->translate("EmuThread", "Downloading %1...").arg(QtUtils::StringViewToQString(
-			std::string_view(url).substr((url_file_part_pos >= 0) ? (url_file_part_pos + 1) : 0))));
+			std::string_view(url).substr((url_file_part_pos != std::string::npos) ? (url_file_part_pos + 1) : 0))));
 	progress.GetDialog().setWindowTitle(title);
 	progress.GetDialog().setWindowIcon(GetAppIcon());
 	progress.SetCancellable(true);
@@ -1778,9 +1766,7 @@ bool QtHost::ParseCommandLineOptions(const QStringList& args, std::shared_ptr<VM
 			}
 			else if (CHECK_ARG(QStringLiteral("-updatecleanup")))
 			{
-				if (AutoUpdaterDialog::isSupported())
-					AutoUpdaterDialog::cleanupAfterUpdate();
-
+				s_cleanup_after_update = AutoUpdaterDialog::isSupported();
 				continue;
 			}
 #ifdef ENABLE_RAINTEGRATION
@@ -1910,6 +1896,10 @@ int main(int argc, char* argv[])
 	// Are we just setting up the configuration?
 	if (s_test_config_and_exit)
 		return EXIT_SUCCESS;
+
+	// Remove any previous-version remanants.
+	if (s_cleanup_after_update)
+		AutoUpdaterDialog::cleanupAfterUpdate();
 
 	// Set theme before creating any windows.
 	QtHost::UpdateApplicationTheme();

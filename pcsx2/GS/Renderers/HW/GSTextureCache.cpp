@@ -3512,7 +3512,7 @@ bool GSTextureCache::Move(u32 SBP, u32 SBW, u32 SPSM, int sx, int sy, u32 DBP, u
 			return false;
 	}
 
-	if (m_expected_src_bp == SBP && m_expected_dst_bp == DBP)
+	if (m_expected_src_bp == static_cast<int>(SBP) && m_expected_dst_bp == static_cast<int>(DBP))
 	{
 		// Get the new position so we can work out the offset.
 		GSVector4i rect_offset = TranslateAlignedRectByPage(m_remembered_src_bp, m_remembered_src_bp + 1, SBW, SPSM, SBP, SPSM, SBW, GSVector4i(sx, sy, sx + w, sy + h), false);
@@ -6023,8 +6023,6 @@ bool GSTextureCache::Target::HasValidBitsForFormat(u32 psm, bool req_color, bool
 					AddDirtyRectTarget(this, m_valid, m_TEX0.PSM, m_TEX0.TBW, mask, false);
 
 				alpha_valid = true; // This is going to get resolved going forward.
-				m_valid_alpha_low = true;
-				m_valid_alpha_high = true;
 			}
 			break;
 	}
