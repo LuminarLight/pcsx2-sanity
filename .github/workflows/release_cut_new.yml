@@ -15,7 +15,7 @@ on:
       is_prelease:
         description: 'Should be a pre-release?'
         required: true
-        default: 'true'
+        default: 'false'
         type: choice
         options:
           - 'true'
