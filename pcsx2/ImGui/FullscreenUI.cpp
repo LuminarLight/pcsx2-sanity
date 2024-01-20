@@ -3276,6 +3276,8 @@ void FullscreenUI::DrawGraphicsSettingsPage()
 		"EmuCore", "EnableWideScreenPatches", false);
 	DrawToggleSetting(bsi, FSUI_CSTR("Enable No-Interlacing Patches"),
 		FSUI_CSTR("Enables loading no-interlacing patches from pnach files."), "EmuCore", "EnableNoInterlacingPatches", false);
+	DrawToggleSetting(bsi, FSUI_CSTR("Enable TOOL Mode"),
+		FSUI_CSTR("Will load TOOL patches, but all other patches will be disabled while this is active."), "EmuCore", "EnableToolMode", false);
 	DrawIntListSetting(bsi, FSUI_CSTR("Bilinear Upscaling"), FSUI_CSTR("Smooths out the image when upscaling the console to the screen."),
 		"EmuCore/GS", "linear_present_mode", static_cast<int>(GSPostBilinearMode::BilinearSharp), s_bilinear_present_options,
 		std::size(s_bilinear_present_options), true);
@@ -4308,6 +4310,7 @@ void FullscreenUI::DrawFoldersSettingsPage()
 	DrawFolderSetting(bsi, FSUI_ICONSTR(ICON_FA_GAMEPAD, "Input Profile Directory"), "Folders", "InputProfiles", EmuFolders::InputProfiles);
 	DrawFolderSetting(bsi, FSUI_ICONSTR(ICON_FA_FROWN, "Cheats Directory"), "Folders", "Cheats", EmuFolders::Cheats);
 	DrawFolderSetting(bsi, FSUI_ICONSTR(ICON_FA_MAGIC, "Patches Directory"), "Folders", "Patches", EmuFolders::Patches);
+	DrawFolderSetting(bsi, FSUI_ICONSTR(ICON_FA_MAGIC, "TOOL Patches Directory"), "Folders", "ToolPatches", EmuFolders::ToolPatches);
 	DrawFolderSetting(bsi, FSUI_ICONSTR(ICON_FA_SLIDERS_H, "Texture Replacements Directory"), "Folders", "Textures", EmuFolders::Textures);
 	DrawFolderSetting(bsi, FSUI_ICONSTR(ICON_FA_SLIDERS_H, "Video Dumping Directory"), "Folders", "Videos", EmuFolders::Videos);
 
