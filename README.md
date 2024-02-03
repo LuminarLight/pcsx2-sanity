@@ -16,7 +16,6 @@ If you have any changes that you think would improve the emulator but would get 
 - When you look at the patches of a game, normally it doesn't indicate whether a patch would get auto-loaded due to global settings or not. Now there is an indicator for this - if a patch will get loaded due to global settings, it will be highlighted in green in the list. This is especially useful if you want to have a clear picture when you are using the patch segregation features.
 
 ### Plans/TODO:
-
 - Add the Jak debug mode pnach files. Need to rework them a bit for the new pnach format. This is in progress.
 - Properly get the serial even if we use FIREWIRE.IRX or DISKINFO.BIN as main ELF for an ISO.
 - Prevent non-labelled patches. This is PCSX2-Sanity, we can expect our users to adapt their pnach files. In most cases they just have to add one line to the top of the file.
