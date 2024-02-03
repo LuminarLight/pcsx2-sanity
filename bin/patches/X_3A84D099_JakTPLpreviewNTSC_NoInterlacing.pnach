@@ -1,0 +1,28 @@
+[No-Interlacing]
+gsinterlacemode=1
+gametitle=Jak and Daxter: The Precursor Legacy [September 2001 Preview] (NTSC)(SCUS-97124)
+author=Luminar
+description=No Interlacing & No Blur
+
+// No Interlacing
+patch=1,EE,202B1964,word,24060000
+patch=1,EE,20896CE4,word,AEE0ED00
+
+// No Blur
+patch=1,EE,00746EB8,extended,000000E0
+patch=1,EE,2010F254,extended,30420000
+
+[No-Interlacing TOOL]
+gsinterlacemode=1
+gametitle=Jak and Daxter: The Precursor Legacy [September 2001 Preview] (NTSC)(SCUS-97124)
+author=Luminar
+description=No Interlacing & No Blur
+
+// No Interlacing
+patch=1,EE,202AF964,word,24060000
+patch=1,EE,20894C54,word,AEE0ED00
+
+// No Blur
+patch=1,EE,00744168,extended,000000E0
+patch=1,EE,2010F254,extended,30420000
+

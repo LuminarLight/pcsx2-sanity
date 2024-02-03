@@ -1,0 +1,46 @@
+[TOOL]
+gametitle=Jak and Daxter: The Precursor Legacy [September 2001 Preview] (NTSC)(SCUS-97124)
+author=Luminar
+description=Debug Mode, extra console logs, 'loado' fix, symbol table corruption fix.
+comment=Enables Developer/Debug Mode - Credit to water111 for discovering / documenting the required ELF edits
+comment=Credits to Luminar for making the debug mode patch for this game build, and for the additional patches.
+comment=You must run FIREWIRE.IRX (DRIVERS folder) for this patch to work.
+
+// NOP Disabling MasterDebug
+patch=0,EE,00100160,word,00000000
+// NOP Disabling DebugSegment
+patch=0,EE,00100164,word,00000000
+// NOP Disabling SendFromBufferD - tries to start DECI2 connection
+patch=0,EE,0010ac34,word,00000000
+// NOP branch that skips loading the game engine in debug
+patch=0,EE,0010451c,word,00000000
+// NOP branch that skips calling "play" function in debug
+patch=0,EE,00104578,word,00000000
+
+// enable console logs
+patch=0,EE,00103758,word,00000000
+patch=0,EE,00128370,word,00000000
+
+// print messages printed with (format 0 ...
+patch=0,EE,00102c24,word,00000000
+
+
+// Additional patches:
+
+// Replace 'loado' pointer with 'print' pointer. 
+// The 'loado' function tries to load missing assets from network/filesystem(?). It is only used when game is in Debug Mode.
+// This workaround will prevent loado from freezing the game, allowing you to explore the final boss level, which is the only level in the build with missing assets.
+patch=1,EE,00147cbc,word,0015F1A4
+
+// Keep the beginning of the symbol table healthy by continously writing to it.
+// In this build, the symbol table can get corrupted, and once that happens no actors will spawn until you restart the game (among other issues).
+// The corruption is 100% consistent when the finalboss level is loaded, and can randomly happen at other places as well.
+// This workaround will continously "heal" the symbol table - even if it gets corrupted, these patches should fix it quick enough to prevent any problems.
+patch=1,EE,001449a4,word,001449a4
+patch=1,EE,001449a8,word,0015c9e4
+patch=1,EE,001449ac,word,001449ac
+patch=1,EE,001449b0,word,0015c9e4
+patch=1,EE,001449b4,word,0015ca64
+patch=1,EE,001449b8,word,0015c9e4
+patch=1,EE,001449bc,word,0015d154
+patch=1,EE,001449c0,word,0015c9e4
