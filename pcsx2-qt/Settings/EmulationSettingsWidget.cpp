@@ -92,6 +92,8 @@ EmulationSettingsWidget::EmulationSettingsWidget(SettingsWindow* dialog, QWidget
 
 	SettingWidgetBinder::BindWidgetToBoolSetting(sif, m_ui.hostFilesystem, "EmuCore", "HostFs", false);
 
+	SettingWidgetBinder::BindWidgetToBoolSetting(sif, m_ui.toolMode, "EmuCore", "EnableToolMode", false);
+
 	dialog->registerWidgetHelp(m_ui.normalSpeed, tr("Normal Speed"), tr("100%"),
 		tr("Sets the target emulation speed. It is not guaranteed that this speed will be reached, "
 		   "and if not, the emulator will run as fast as it can manage."));
@@ -139,6 +141,9 @@ EmulationSettingsWidget::EmulationSettingsWidget(SettingsWindow* dialog, QWidget
 		   "potentially increasing the emulation speed by less than 1%. Scale To Host Refresh Rate will not take effect if "
 		   "the console's refresh rate is too far from the host's refresh rate. Users with variable refresh rate displays "
 		   "should disable this option."));
+
+	dialog->registerWidgetHelp(m_ui.toolMode, tr("Enable TOOL Mode"), tr("Unchecked"),
+		tr("Will load TOOL patches, but all other patches will be disabled while this is active."));
 
 	updateOptimalFramePacing();
 }

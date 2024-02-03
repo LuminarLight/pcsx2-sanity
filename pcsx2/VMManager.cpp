@@ -2563,7 +2563,8 @@ void VMManager::CheckForPatchConfigChanges(const Pcsx2Config& old_config)
 	if (EmuConfig.EnableCheats == old_config.EnableCheats &&
 		EmuConfig.EnableWideScreenPatches == old_config.EnableWideScreenPatches &&
 		EmuConfig.EnableNoInterlacingPatches == old_config.EnableNoInterlacingPatches &&
-		EmuConfig.EnablePatches == old_config.EnablePatches)
+		EmuConfig.EnablePatches == old_config.EnablePatches &&
+		EmuConfig.EnableToolMode == old_config.EnableToolMode)
 	{
 		return;
 	}

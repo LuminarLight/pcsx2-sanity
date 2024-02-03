@@ -120,9 +120,27 @@ void GamePatchSettingsWidget::reloadList()
 				first = false;
 			}
 
+			bool highlight = false;
+
+			// Look at Patch.cpp for the strings manually before changing it here. I am too fool.
+			if ((pi.name == "Widescreen 16:9" && (EmuConfig.EnableWideScreenPatches && !EmuConfig.EnableToolMode)) ||
+				(pi.name == "Widescreen 16:9 TOOL" && (EmuConfig.EnableWideScreenPatches && EmuConfig.EnableToolMode)) ||
+				(pi.name == "No-Interlacing" && (EmuConfig.EnableNoInterlacingPatches && !EmuConfig.EnableToolMode)) ||
+				(pi.name == "No-Interlacing TOOL" && (EmuConfig.EnableNoInterlacingPatches && EmuConfig.EnableToolMode)) ||
+				(pi.name == "TOOL" && EmuConfig.EnableToolMode))
+			{
+				highlight = true;
+			}
+
 			const bool enabled = (std::find(enabled_list.begin(), enabled_list.end(), pi.name) != enabled_list.end());
 			GamePatchDetailsWidget* it =
 				new GamePatchDetailsWidget(std::move(pi.name), pi.author, pi.description, enabled, m_dialog, container);
+
+			if (highlight)
+			{
+				it->setStyleSheet("background-color:green;");
+			}
+
 			layout->addWidget(it);
 		}
 	}

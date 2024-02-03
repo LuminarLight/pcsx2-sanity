@@ -1,0 +1,68 @@
+[TOOL]
+gametitle=Jak X: Combat Racing [Greatest Hits] (NTSC)(SCUS-97429)
+author=Luminar
+description=Makes the game boot in Debug Mode.
+comment=Enables Developer/Debug Mode - Credit to Luminar for making the patch for this build.
+comment=Special thanks to water111 and Vaser for their relevant research done for earlier Jak games. It helped make this possible.
+
+//---// The following patches are on the "ELF side". //---//
+// The ELF of Jak X is encrypted/packed/compressed (not sure which). It unpacks itself while booting. So analyzing it is a bit more difficult, but doable if you use a memory dump.
+// If you want to patch the "early part" of memory, you should add condition (E-type extended) patches to ensure you only write after the unpacking is done.
+
+// nop the disabling of MasterDebug, this will make MasterDebug stay 1
+// Edit: We don't actually need this, and I couldn't find a way to make the game work with MasterDebug on. So this patch is commented out for now, but kept here for reference.
+//patch=1,EE,00266b04,word,00000000
+
+// nop the disabling of DebugSegment, this will make DebugSegment stay 1
+patch=1,EE,00266b0c,word,00000000
+// nop the disabling of DebugSymbols, this will make DebugSymbols stay 1
+patch=1,EE,00266b18,word,00000000
+
+// 		The following patch was copied from Jak 3's patches (found the same thing in Jak X), but since it only matters with MasterDebug, we can comment it out.
+// NOP SendFromBufferD call in InitListener - This is called only when MasterDebug is on
+//patch=1,EE,00270660,word,00000000
+
+// Extra console logs. Very useful.
+// The E-type patch is recommended because writing the patch too early can cause weird problems in other builds, so it is safe to have it in this one as well (though not essential).
+patch=1,EE,E00027D4,extended,00283041
+patch=1,EE,001EDC80,extended,00000001
+
+// nop the weird function call in InitMachine that returns something but we don't use it because I rewrote the init heap function calls.
+patch=1,EE,0026a250,word,00000000
+
+// Change malloc param to 0x10, because it is like that in Jak 3 and it works.
+patch=1,EE,0026a260,word,24040010
+
+// Rewrite init heap function call for global heap.
+patch=1,EE,0026a2d0,word,8e04bdc0
+patch=1,EE,0026a2d4,word,3c0604d2
+patch=1,EE,0026a2d8,word,34c60820
+patch=1,EE,0026a2dc,word,00402825
+patch=1,EE,0026a2e0,word,0c096ed0
+patch=1,EE,0026a2e4,word,00000000
+
+// Rewrite init heap function call for debug heap.
+patch=1,EE,0026a308,word,3c0f0026
+patch=1,EE,0026a30c,word,3c0602f0
+patch=1,EE,0026a310,word,8de4bdc4
+patch=1,EE,0026a314,word,00000000
+patch=1,EE,0026a318,word,0c096ed0
+patch=1,EE,0026a31c,word,3c050500
+
+// 		This was copied straight from the Jak 3 patches (I found the same place in Jak X).
+// This is about changing the stack pointer
+// Shoves a MIPS instruction into near the very top of the entry point
+// Ghidra blows up here, but binary ninja can handle it
+// Orginally at this position there is `2D E8 40 00` - `daddu $sp, $v0, $zero`
+// This changes it to - `lui sp, 0x0800` Which loads the value 0x0800 to the stackpointer register, modifying it.
+patch=1,EE,00266854,word,3c1d0800
+
+//---// The following patches are on the "GOAL side". //---//
+
+// Make 'read-sound-info-tweaks' unable to get stuck in a while loop, by ruining the loop itself.
+// This is needed to be able to boot the game in "debug mode". Without this patch, the game will get stuck forever, after printing "reading sound info ..." twice.
+patch=1,EE,067a69b4,word,00000000
+
+// Make 'set-blackout-frames' always act as if the parameter was 0. The other branch will never be called.
+// This gets rid of the (sometimes infinite) blackout you get when using Game... Continue... to warp to a continue-point.
+patch=1,EE,00ad39b4,word,00000000

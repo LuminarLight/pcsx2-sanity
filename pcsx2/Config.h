@@ -1130,6 +1130,7 @@ struct Pcsx2Config
 		EnablePINE : 1, // enables inter-process communication
 		EnableWideScreenPatches : 1,
 		EnableNoInterlacingPatches : 1,
+		EnableToolMode : 1,
 		EnableFastBoot : 1,
 		EnableFastBootFastForward : 1,
 		EnablePerGameSettings : 1,
