@@ -8,16 +8,18 @@ If you have any changes that you think would improve the emulator but would get 
 - Included 'Sanity' in the application's name at most places.
 - Reworked the auto-updater. It no longer relies on the PCSX2 website, instead it now relies only on GitHub. This gives us full independence.
 - Integrated memory-increasing changes from the [128MB Build](https://github.com/xTVaser/pcsx2-rr/tree/128mb-build) of PCSX2, which means that we have 128MB EE memory now. This shouldn't impact games that don't use it.
-- If a 'DRIVERS\FIREWIRE.IRX' or a 'DISKINFO.BIN' file exists on the disc, then it will be treated as the main ELF for booting and CRC purposes. If neither are found, the old behaviour will be used (looking up 'SYSTEM.CNF' and getting ELF path from there). This had to be done because in Jak pre-release builds, the "official" ELF is just a loader for these files, and this loader is usually fully identical between different pre-release builds of the same Jak game, which means they also have same CRC, making patches and everything impossible. But the FIREWIRE.IRX and DISKINFO.BIN files are (almost always) unique, allowing us to uniquely identify these builds.
+- If a 'DRIVERS\FIREWIRE.IRX' or a 'DISKINFO.BIN' file exists on the disc, then it will be treated as the main ELF for booting and CRC purposes. If neither are found, the old behaviour will be used (looking up 'SYSTEM.CNF' and getting ELF path from there). This had to be done because in Jak pre-release builds, the "official" ELF is just a loader for these files, and this loader is usually fully identical between different pre-release builds of the same Jak game, which means they also have same CRC, making patches and everything impossible. But the FIREWIRE.IRX and DISKINFO.BIN files are (almost always) unique, allowing us to uniquely identify these builds. A nice side-effect of booting these files directly is that we completely avoid the WIBU protection.
 - Assign serial code 'X' to ISOs where we treat FIREWIRE.IRX or DISKINFO.BIN as the main ELF. Because per-game settings for some reason don't work if the serial is empty.
 - GitHub releases for the project are no longer automatic. I think manual is better for a project like this.
+- Each release can now have a message that will appear for users in the auto updater window. The commit list will still be there as well.
+- Added a 'Enable TOOL Mode' toggle. Basically patch segregation. When a Jak game is booted in Debug Mode, the memory changes significantly. This means that patches made for the game running in normal mode corrupt the game when running in debug mode. When TOOL Mode is enabled, the game will auto-load patches with 'TOOL' label. It will also attempt to load patches with 'Widescreen 16:9 TOOL' and 'No-Interlacing TOOL' labels instead of their TOOL-less counterparts, but only if all other conditions are met (for example the setting that force-loads widescreen patches).
+- When you look at the patches of a game, normally it doesn't indicate whether a patch would get auto-loaded due to global settings or not. Now there is an indicator for this - if a patch will get loaded due to global settings, it will be highlighted in green in the list. This is especially useful if you want to have a clear picture when you are using the patch segregation features.
 
 ### Plans/TODO:
-- Invent a way to quickly toggle between "TOOL Mode" and normal mode, and maybe also separate the patches somehow. When a Jak game is booted in Debug Mode, the memory changes significantly. So patches made for the game running in normal mode would likely corrupt the game when running in debug mode.
-- Add the Jak debug mode pnach files. Need to rework them a bit for the new pnach format.
+
+- Add the Jak debug mode pnach files. Need to rework them a bit for the new pnach format. This is in progress.
 - Properly get the serial even if we use FIREWIRE.IRX or DISKINFO.BIN as main ELF for an ISO.
 - Prevent non-labelled patches. This is PCSX2-Sanity, we can expect our users to adapt their pnach files. In most cases they just have to add one line to the top of the file.
-- Make the release notes of the repository customizable, instead of always using the last commit description.
 
 
 And here is the parent's README:
