@@ -165,11 +165,13 @@ namespace Patch
 	static constexpr std::string_view WS_PATCH_NAME = "Widescreen 16:9";
 	static constexpr std::string_view NI_PATCH_NAME = "No-Interlacing";
 	static constexpr std::string_view TOOL_PATCH_NAME = "TOOL";
+	static constexpr std::string_view TOOL_WS_PATCH_NAME = "Widescreen 16:9 TOOL";
+	static constexpr std::string_view TOOL_NI_PATCH_NAME = "No-Interlacing TOOL";
 	static constexpr std::string_view PATCHES_ZIP_NAME = "patches.zip";
+	// These are also in GamePatchSettingsWidget.cpp because I am stupid, please keep in mind.
 
 	const char* PATCHES_CONFIG_SECTION = "Patches";
 	const char* CHEATS_CONFIG_SECTION = "Cheats";
-	const char* TOOL_PATCHES_CONFIG_SECTION = "ToolPatches";
 	const char* PATCH_ENABLE_CONFIG_KEY = "Enable";
 
 	static zip_t* s_patches_zip;
@@ -389,14 +391,6 @@ std::vector<std::string> Patch::FindPatchFilesOnDisk(const std::string_view& ser
 	for (FILESYSTEM_FIND_DATA& fd : files)
 		ret.push_back(std::move(fd.FileName));
 
-	// TOOL Patches
-	FileSystem::FindFiles(EmuFolders::ToolPatches.c_str(),
-		GetPnachTemplate(serial, crc, false, true, false).c_str(), FILESYSTEM_FIND_FILES | FILESYSTEM_FIND_HIDDEN_FILES,
-		&files);
-	ret.reserve(ret.size() + files.size());
-	for (FILESYSTEM_FIND_DATA& fd : files)
-		ret.push_back(std::move(fd.FileName));
-
 	return ret;
 }
 
@@ -593,7 +587,9 @@ void Patch::ReloadEnabledLists()
 	s_enabled_patches = Host::GetStringListSetting(PATCHES_CONFIG_SECTION, PATCH_ENABLE_CONFIG_KEY);
 
 	// Name based matching for widescreen/NI settings.
-	if (EmuConfig.EnableWideScreenPatches)
+
+	// Widescreen patches
+	if (EmuConfig.EnableWideScreenPatches && !EmuConfig.EnableToolMode)
 	{
 		if (std::none_of(s_enabled_patches.begin(), s_enabled_patches.end(),
 				[](const std::string& it) { return (it == WS_PATCH_NAME); }))
@@ -601,12 +597,40 @@ void Patch::ReloadEnabledLists()
 			s_enabled_patches.emplace_back(WS_PATCH_NAME);
 		}
 	}
-	if (EmuConfig.EnableNoInterlacingPatches)
+	else if (EmuConfig.EnableWideScreenPatches && EmuConfig.EnableToolMode)
+	{
+		if (std::none_of(s_enabled_patches.begin(), s_enabled_patches.end(),
+				[](const std::string& it) { return (it == TOOL_WS_PATCH_NAME); }))
+		{
+			s_enabled_patches.emplace_back(TOOL_WS_PATCH_NAME);
+		}
+	}
+
+	// No-interlacing patches
+	if (EmuConfig.EnableNoInterlacingPatches && !EmuConfig.EnableToolMode)
 	{
 		if (std::none_of(s_enabled_patches.begin(), s_enabled_patches.end(),
 				[](const std::string& it) { return (it == NI_PATCH_NAME); }))
 		{
 			s_enabled_patches.emplace_back(NI_PATCH_NAME);
+		}
+	}
+	else if (EmuConfig.EnableNoInterlacingPatches && EmuConfig.EnableToolMode)
+	{
+		if (std::none_of(s_enabled_patches.begin(), s_enabled_patches.end(),
+				[](const std::string& it) { return (it == TOOL_NI_PATCH_NAME); }))
+		{
+			s_enabled_patches.emplace_back(TOOL_NI_PATCH_NAME);
+		}
+	}
+
+	// TOOL patches
+	if (EmuConfig.EnableToolMode)
+	{
+		if (std::none_of(s_enabled_patches.begin(), s_enabled_patches.end(),
+				[](const std::string& it) { return (it == TOOL_PATCH_NAME); }))
+		{
+			s_enabled_patches.emplace_back(TOOL_PATCH_NAME);
 		}
 	}
 }

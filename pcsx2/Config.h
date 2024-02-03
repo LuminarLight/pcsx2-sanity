@@ -1224,7 +1224,6 @@ namespace EmuFolders
 	extern std::string Logs;
 	extern std::string Cheats;
 	extern std::string Patches;
-	extern std::string ToolPatches;
 	extern std::string Resources;
 	extern std::string UserResources;
 	extern std::string Cache;
