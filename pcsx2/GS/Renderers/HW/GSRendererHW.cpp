@@ -1248,8 +1248,8 @@ bool GSRendererHW::IsUsingAsInBlend()
 
 bool GSRendererHW::IsTBPFrameOrZ(u32 tbp)
 {
-	const bool is_frame = (m_cached_ctx.FRAME.Block() == tbp);
-	const bool is_z = (m_cached_ctx.ZBUF.Block() == tbp);
+	const bool is_frame = (m_cached_ctx.FRAME.Block() == tbp) && (GSUtil::GetChannelMask(m_cached_ctx.FRAME.PSM) & GSUtil::GetChannelMask(m_cached_ctx.TEX0.PSM));
+	const bool is_z = (m_cached_ctx.ZBUF.Block() == tbp) && (GSUtil::GetChannelMask(m_cached_ctx.ZBUF.PSM) & GSUtil::GetChannelMask(m_cached_ctx.TEX0.PSM));
 	if (!is_frame && !is_z)
 		return false;
 
@@ -1273,6 +1273,27 @@ bool GSRendererHW::IsTBPFrameOrZ(u32 tbp)
 	return (is_frame && !no_rt) || (is_z && !no_ds);
 }
 
+void GSRendererHW::HandleManualDeswizzle()
+{
+	// Check if it's doing manual deswizzling first (draws are 32x16), if they are, check if the Z is flat, if not, we're gonna have to get creative and swap around the quandrants, but that's a TODO.
+	GSVertex* v = &m_vertex.buff[0];
+
+	for (u32 i = 0; i < m_vertex.tail; i += 2)
+	{
+		if ((abs((v[i + 1].U) - (v[i].U)) >> 4) != 32 || (abs((v[i + 1].V) - (v[i].V)) >> 4) != 16)
+			return;
+	}
+
+	if (m_vt.m_eq.z)
+	{
+		GSVector4i tex_rect = GSVector4i(m_vt.m_min.t.x, m_vt.m_min.t.y, m_vt.m_max.t.x, m_vt.m_max.t.y);
+		ReplaceVerticesWithSprite(m_r, tex_rect, GSVector2i(1 << m_cached_ctx.TEX0.TW, 1 << m_cached_ctx.TEX0.TH), m_context->scissor.in);
+	}
+	else
+	{
+		DevCon.Warning("Swizzled depth palette draw with non-flat Z draw %d", s_n);
+	}
+}
 
 void GSRendererHW::InvalidateVideoMem(const GIFRegBITBLTBUF& BITBLTBUF, const GSVector4i& r)
 {
@@ -1968,7 +1989,8 @@ void GSRendererHW::Draw()
 			DetectDoubleHalfClear(no_rt, no_ds);
 	}
 
-	m_process_texture = PRIM->TME && !(PRIM->ABE && m_context->ALPHA.IsBlack() && !m_cached_ctx.TEX0.TCC);
+	m_process_texture = PRIM->TME && !(PRIM->ABE && m_context->ALPHA.IsBlack() && !m_cached_ctx.TEX0.TCC) && !(no_rt && (!m_cached_ctx.TEST.ATE || m_cached_ctx.TEST.ATST <= ATST_ALWAYS));
+
 	const bool no_gaps = PrimitiveCoversWithoutGaps();
 	const bool not_writing_to_all = (!no_gaps || AreAnyPixelsDiscarded() || !all_depth_tests_pass);
 	bool preserve_depth =
@@ -2302,8 +2324,11 @@ void GSRendererHW::Draw()
 		}
 		const bool possible_shuffle = !no_rt && (((shuffle_target && GSLocalMemory::m_psm[m_cached_ctx.FRAME.PSM].bpp == 16) || (m_cached_ctx.FRAME.Block() == m_cached_ctx.TEX0.TBP0 && ((m_cached_ctx.TEX0.PSM & 0x6) || m_cached_ctx.FRAME.PSM != m_cached_ctx.TEX0.PSM))) || IsPossibleChannelShuffle());
 		const bool need_aem_color = GSLocalMemory::m_psm[m_cached_ctx.TEX0.PSM].trbpp <= 24 && GSLocalMemory::m_psm[m_cached_ctx.TEX0.PSM].pal == 0 && m_context->ALPHA.C == 0 && m_env.TEXA.AEM;
-		const bool req_color = (!PRIM->ABE || (PRIM->ABE && (IsUsingCsInBlend() || need_aem_color))) && (possible_shuffle || (m_cached_ctx.FRAME.FBMSK & (fm_mask & 0x00FFFFFF)) != (fm_mask & 0x00FFFFFF));
-		const bool alpha_used = m_context->TEX0.TCC && ((PRIM->ABE && IsUsingAsInBlend()) || (m_cached_ctx.TEST.ATE && m_cached_ctx.TEST.ATST > ATST_ALWAYS) || (possible_shuffle || (m_cached_ctx.FRAME.FBMSK & (fm_mask & 0xFF000000)) != (fm_mask & 0xFF000000)));
+		const u32 color_mask = (m_vt.m_max.c > GSVector4i::zero()).mask();
+		const bool texture_function_color = m_cached_ctx.TEX0.TFX == TFX_DECAL || (color_mask & 0xFFF) || (m_cached_ctx.TEX0.TFX > TFX_DECAL && (color_mask & 0xF000));
+		const bool texture_function_alpha = m_cached_ctx.TEX0.TFX != TFX_MODULATE || (color_mask & 0xF000);
+		const bool req_color = texture_function_color && (!PRIM->ABE || (PRIM->ABE && (IsUsingCsInBlend() || need_aem_color))) && (possible_shuffle || (m_cached_ctx.FRAME.FBMSK & (fm_mask & 0x00FFFFFF)) != (fm_mask & 0x00FFFFFF));
+		const bool alpha_used = (m_context->TEX0.TCC && texture_function_alpha) && ((PRIM->ABE && IsUsingAsInBlend()) || (m_cached_ctx.TEST.ATE && m_cached_ctx.TEST.ATST > ATST_ALWAYS) || (possible_shuffle || (m_cached_ctx.FRAME.FBMSK & (fm_mask & 0xFF000000)) != (fm_mask & 0xFF000000)));
 		const bool req_alpha = (GSUtil::GetChannelMask(m_context->TEX0.PSM) & 0x8) && alpha_used;
 
 		// TODO: Be able to send an alpha of 1.0 (blended with vertex alpha maybe?) so we can avoid sending the texture, since we don't always need it.
@@ -2407,7 +2432,7 @@ void GSRendererHW::Draw()
 		// create that target, because the clear isn't black, it'll hang around and never get invalidated.
 		const bool is_square = (t_size.y == t_size.x) && m_r.w >= 1023 && PrimitiveCoversWithoutGaps();
 		const bool is_clear = is_possible_mem_clear && is_square;
-		const bool possible_shuffle = draw_sprite_tex && (((src && src->m_target && src->m_from_target && src->m_from_target->m_32_bits_fmt && GSLocalMemory::m_psm[src->m_from_target_TEX0.PSM].depth == GSLocalMemory::m_psm[m_cached_ctx.TEX0.PSM].depth) &&
+		const bool possible_shuffle = draw_sprite_tex && (((src && src->m_target && src->m_from_target && src->m_from_target->m_32_bits_fmt) &&
 															  GSLocalMemory::m_psm[m_cached_ctx.TEX0.PSM].bpp == 16 && GSLocalMemory::m_psm[m_cached_ctx.FRAME.PSM].bpp == 16) ||
 															 IsPossibleChannelShuffle());
 		rt = g_texture_cache->LookupTarget(FRAME_TEX0, t_size, target_scale, GSTextureCache::RenderTarget, true,
@@ -4491,6 +4516,11 @@ __ri void GSRendererHW::EmulateTextureSampler(const GSTextureCache::Target* rt, 
 
 		const GSVector4 half_pixel = RealignTargetTextureCoordinate(tex);
 		m_conf.cb_vs.texture_offset = GSVector2(half_pixel.x, half_pixel.y);
+
+		if (m_vt.m_primclass == GS_SPRITE_CLASS && GSLocalMemory::m_psm[m_cached_ctx.TEX0.PSM].pal > 0 && (tex->m_from_target_TEX0.PSM & 0x30) == 0x30 && m_index.tail >= 4)
+		{
+			HandleManualDeswizzle();
+		}
 	}
 	else if (tex->m_palette)
 	{
@@ -5908,15 +5938,19 @@ bool GSRendererHW::DetectDoubleHalfClear(bool& no_rt, bool& no_ds)
 		return false;
 
 	// Z and color must be constant and the same
-	GSVertex* v = &m_vertex.buff[0];
-	if (m_vt.m_eq.rgba != 0xFFFF || !m_vt.m_eq.z || v[1].XYZ.Z != v[1].RGBAQ.U32[0])
+	if (m_vt.m_eq.rgba != 0xFFFF || !m_vt.m_eq.z)
+		return false;
+
+	const u32 write_color = GetConstantDirectWriteMemClearColor();
+	const u32 write_depth = GetConstantDirectWriteMemClearDepth();
+	if (write_color != write_depth)
 		return false;
 
 	// Frame and depth pointer can be inverted
 	const bool clear_depth = (m_cached_ctx.FRAME.FBP > m_cached_ctx.ZBUF.ZBP);
 	const u32 base = clear_depth ? m_cached_ctx.ZBUF.ZBP : m_cached_ctx.FRAME.FBP;
 	const u32 half = clear_depth ? m_cached_ctx.FRAME.FBP : m_cached_ctx.ZBUF.ZBP;
-	const bool enough_bits = clear_depth ? (frame_psm.trbpp >= zbuf_psm.trbpp) : (zbuf_psm.trbpp >= frame_psm.trbpp);
+	const bool enough_bits = (frame_psm.trbpp == zbuf_psm.trbpp);
 
 	// Size of the current draw
 	const u32 w_pages = (m_r.z + (frame_psm.pgs.x - 1)) / frame_psm.pgs.x;
@@ -5927,7 +5961,11 @@ bool GSRendererHW::DetectDoubleHalfClear(bool& no_rt, bool& no_ds)
 	if (half > (base + written_pages) || half <= base)
 		return false;
 
+	// CoD: World at War draws a shadow map with RGB masked at the same page as the depth buffer, which is
+	// double-half cleared. For testing, ignore any targets that don't have the bits we're drawing to.
+	const bool req_valid_alpha = ((frame_psm.fmsk & zbuf_psm.fmsk) & 0xFF000000u) != 0;
 	GSTextureCache::Target* half_point = g_texture_cache->GetExactTarget(half << 5, m_cached_ctx.FRAME.FBW, clear_depth ? GSTextureCache::RenderTarget : GSTextureCache::DepthStencil, half << 5);
+	half_point = (half_point && half_point->m_valid_rgb && half_point->HasValidAlpha() == req_valid_alpha) ? half_point : nullptr;
 	if (half_point && half_point->m_age <= 1)
 		return false;
 
@@ -5938,8 +5976,30 @@ bool GSRendererHW::DetectDoubleHalfClear(bool& no_rt, bool& no_ds)
 	if ((!enough_bits && frame_psm.fmt != zbuf_psm.fmt && m_cached_ctx.FRAME.FBMSK != ((zbuf_psm.fmt == 1) ? 0xFF000000u : 0)) ||
 		!GSUtil::HasCompatibleBits(m_cached_ctx.FRAME.PSM & ~0x30, m_cached_ctx.ZBUF.PSM & ~0x30)) // Bit depth is not the same (i.e. 32bit + 16bit).
 	{
-		GL_INS("Inconsistent FRAME [%s, %08x] and ZBUF [%s] formats, not using double-half clear.",
+		GL_INS("DetectDoubleHalfClear(): Inconsistent FRAME [%s, %08x] and ZBUF [%s] formats, not using double-half clear.",
 			psm_str(m_cached_ctx.FRAME.PSM), m_cached_ctx.FRAME.FBMSK, psm_str(m_cached_ctx.ZBUF.PSM));
+
+		// Spiderman: Web of Shadows clears its depth buffer with 32-bit FRAME and 24-bit Z. So the upper 8 bits of half
+		// the depth buffer are not cleared, yay. We can't turn this into a 32-bit clear, because then it'll zero out
+		// those bits, which other games need (e.g. Jak 2). We can't do a 24-bit clear, because something might rely
+		// on half those bits actually getting zeroed. So, instead, we toss the depth buffer, and let the mem clear
+		// path write out FRAME and Z separately, with their associated masks. Limit it to black to avoid false positives.
+		if (write_color == 0)
+		{
+			const GSTextureCache::Target* base_tgt = g_texture_cache->GetExactTarget(base * BLOCKS_PER_PAGE,
+				m_cached_ctx.FRAME.FBW, clear_depth ? GSTextureCache::DepthStencil : GSTextureCache::RenderTarget,
+				GSLocalMemory::GetEndBlockAddress(half * BLOCKS_PER_PAGE, m_cached_ctx.FRAME.FBW, m_cached_ctx.FRAME.PSM, m_r));
+			if (base_tgt)
+			{
+				GL_INS("DetectDoubleHalfClear(): Invalidating targets at 0x%x/0x%x due to different formats, and clear to black.",
+					base * BLOCKS_PER_PAGE, half * BLOCKS_PER_PAGE);
+				g_texture_cache->InvalidateVideoMemType(GSTextureCache::RenderTarget, base * BLOCKS_PER_PAGE);
+				g_texture_cache->InvalidateVideoMemType(GSTextureCache::RenderTarget, half * BLOCKS_PER_PAGE);
+				g_texture_cache->InvalidateVideoMemType(GSTextureCache::DepthStencil, base * BLOCKS_PER_PAGE);
+				g_texture_cache->InvalidateVideoMemType(GSTextureCache::DepthStencil, half * BLOCKS_PER_PAGE);
+			}
+		}
+
 		return false;
 	}
 
@@ -5974,10 +6034,12 @@ bool GSRendererHW::DetectDoubleHalfClear(bool& no_rt, bool& no_ds)
 		// Check for a target matching the starting point. It might be in Z or FRAME...
 		GSTextureCache::Target* tgt = g_texture_cache->GetTargetWithSharedBits(
 			base * BLOCKS_PER_PAGE, clear_depth ? m_cached_ctx.ZBUF.PSM : m_cached_ctx.FRAME.PSM);
+		tgt = (tgt && tgt->m_valid_rgb && tgt->HasValidAlpha() == req_valid_alpha) ? tgt : nullptr;
 		if (!tgt)
 		{
 			tgt = g_texture_cache->GetTargetWithSharedBits(
 				base * BLOCKS_PER_PAGE, clear_depth ? m_cached_ctx.FRAME.PSM : m_cached_ctx.ZBUF.PSM);
+			tgt = (tgt && tgt->m_valid_rgb && tgt->HasValidAlpha() == req_valid_alpha) ? tgt : nullptr;
 		}
 
 		u32 end_block = ((half + written_pages) * BLOCKS_PER_PAGE) - 1;
@@ -6025,9 +6087,15 @@ bool GSRendererHW::DetectDoubleHalfClear(bool& no_rt, bool& no_ds)
 	if (horizontal)
 	{
 		const int width = m_r.width();
-		m_cached_ctx.FRAME.FBW *= 2;
 		m_r.z = (w_pages * frame_psm.pgs.x);
 		m_r.z += m_r.x + width;
+
+		const u32 new_w_pages = (m_r.z + 63) / 64;
+		if (new_w_pages > m_cached_ctx.FRAME.FBW)
+		{
+			GL_INS("DetectDoubleHalfClear(): Doubling FBW because %u pages wide is less than FBW %u", new_w_pages, m_cached_ctx.FRAME.FBW);
+			m_cached_ctx.FRAME.FBW *= 2;
+		}
 	}
 	else
 	{
@@ -6197,7 +6265,7 @@ void GSRendererHW::ClearGSLocalMemory(const GSOffset& off, const GSVector4i& r, 
 			pxAssert((off.bp() & (BLOCKS_PER_PAGE - 1)) == 0);
 			for (u32 current_page = off.bp() >> 5; top < page_aligned_bottom; top += pgs.y, current_page += fbw)
 			{
-				current_page &= 0x7ff;
+				current_page &= (MAX_PAGES - 1);
 				GSVector4i* ptr = reinterpret_cast<GSVector4i*>(m_mem.vm8() + current_page * PAGE_SIZE);
 				GSVector4i* const ptr_end = ptr + iterations_per_page;
 				while (ptr != ptr_end)
@@ -6212,7 +6280,7 @@ void GSRendererHW::ClearGSLocalMemory(const GSOffset& off, const GSVector4i& r, 
 			pxAssert((off.bp() & (BLOCKS_PER_PAGE - 1)) == 0);
 			for (u32 current_page = off.bp() >> 5; top < page_aligned_bottom; top += pgs.y, current_page += fbw)
 			{
-				current_page &= 0x7ff;
+				current_page &= (MAX_PAGES - 1);
 				GSVector4i* ptr = reinterpret_cast<GSVector4i*>(m_mem.vm8() + current_page * PAGE_SIZE);
 				GSVector4i* const ptr_end = ptr + iterations_per_page;
 				while (ptr != ptr_end)
@@ -6231,7 +6299,7 @@ void GSRendererHW::ClearGSLocalMemory(const GSOffset& off, const GSVector4i& r, 
 			pxAssert((off.bp() & (BLOCKS_PER_PAGE - 1)) == 0);
 			for (u32 current_page = off.bp() >> 5; top < page_aligned_bottom; top += pgs.y, current_page += fbw)
 			{
-				current_page &= 0x7ff;
+				current_page &= (MAX_PAGES - 1);
 				GSVector4i* ptr = reinterpret_cast<GSVector4i*>(m_mem.vm8() + current_page * PAGE_SIZE);
 				GSVector4i* const ptr_end = ptr + iterations_per_page;
 				while (ptr != ptr_end)
@@ -6651,6 +6719,9 @@ void GSRendererHW::ReplaceVerticesWithSprite(const GSVector4i& unscaled_rect, co
 	m_r = unscaled_rect;
 	m_context->scissor.in = scissor;
 	m_vt.m_primclass = GS_SPRITE_CLASS;
+
+	m_drawlist.clear();
+	m_prim_overlap = PRIM_OVERLAP_NO;
 }
 
 void GSRendererHW::ReplaceVerticesWithSprite(const GSVector4i& unscaled_rect, const GSVector2i& unscaled_size)

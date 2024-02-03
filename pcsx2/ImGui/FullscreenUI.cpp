@@ -2791,7 +2791,7 @@ void FullscreenUI::DrawInterfaceSettingsPage()
 		FSUI_CSTR("Displays warnings when settings are enabled which may break games."), "EmuCore", "WarnAboutUnsafeSettings", true);
 
 	MenuHeading(FSUI_CSTR("Operations"));
-	if (MenuButton(FSUI_ICONSTR(ICON_FA_FOLDER_MINUS, "Reset Settings"),
+	if (MenuButton(FSUI_ICONSTR(ICON_FA_DUMPSTER_FIRE, "Reset Settings"),
 			FSUI_CSTR("Resets configuration to defaults (excluding controller settings)."), !IsEditingGameSettings(bsi)))
 	{
 		DoResetSettings();
@@ -3272,12 +3272,17 @@ void FullscreenUI::DrawGraphicsSettingsPage()
 		"EmuCore/GS", "StretchY", 100, 10, 300, FSUI_CSTR("%d%%"));
 	DrawIntRectSetting(bsi, FSUI_CSTR("Crop"), FSUI_CSTR("Crops the image, while respecting aspect ratio."), "EmuCore/GS", "CropLeft", 0,
 		"CropTop", 0, "CropRight", 0, "CropBottom", 0, 0, 720, 1, FSUI_CSTR("%dpx"));
-	DrawToggleSetting(bsi, FSUI_CSTR("Enable Widescreen Patches"), FSUI_CSTR("Enables loading widescreen patches from pnach files."),
-		"EmuCore", "EnableWideScreenPatches", false);
-	DrawToggleSetting(bsi, FSUI_CSTR("Enable No-Interlacing Patches"),
-		FSUI_CSTR("Enables loading no-interlacing patches from pnach files."), "EmuCore", "EnableNoInterlacingPatches", false);
-	DrawToggleSetting(bsi, FSUI_CSTR("Enable TOOL Mode"),
-		FSUI_CSTR("Will load TOOL patches, but all other patches will be disabled while this is active."), "EmuCore", "EnableToolMode", false);
+
+	if (!IsEditingGameSettings(bsi))
+	{
+		DrawToggleSetting(bsi, FSUI_CSTR("Enable Widescreen Patches"), FSUI_CSTR("Enables loading widescreen patches from pnach files."),
+			"EmuCore", "EnableWideScreenPatches", false);
+		DrawToggleSetting(bsi, FSUI_CSTR("Enable No-Interlacing Patches"),
+			FSUI_CSTR("Enables loading no-interlacing patches from pnach files."), "EmuCore", "EnableNoInterlacingPatches", false);
+		DrawToggleSetting(bsi, FSUI_CSTR("Enable TOOL Mode"),
+			FSUI_CSTR("Will load TOOL patches, but all other patches will be disabled while this is active."), "EmuCore", "EnableToolMode", false);
+	}
+
 	DrawIntListSetting(bsi, FSUI_CSTR("Bilinear Upscaling"), FSUI_CSTR("Smooths out the image when upscaling the console to the screen."),
 		"EmuCore/GS", "linear_present_mode", static_cast<int>(GSPostBilinearMode::BilinearSharp), s_bilinear_present_options,
 		std::size(s_bilinear_present_options), true);
@@ -3653,7 +3658,7 @@ void FullscreenUI::DrawMemoryCardSettingsPage()
 	for (u32 port = 0; port < NUM_MEMORY_CARD_PORTS; port++)
 	{
 		SmallString str;
-		str.fmt(FSUI_FSTR("Console Port {}"), port + 1);
+		str.fmt(FSUI_FSTR("Slot {}"), port + 1);
 		MenuHeading(str.c_str());
 
 		std::string enable_key(fmt::format("Slot{}_Enable", port + 1));
@@ -3844,7 +3849,7 @@ void FullscreenUI::DoSaveInputProfile()
 
 void FullscreenUI::DoResetSettings()
 {
-	OpenConfirmMessageDialog(FSUI_ICONSTR(ICON_FA_FOLDER_MINUS, "Reset Settings"),
+	OpenConfirmMessageDialog(FSUI_ICONSTR(ICON_FA_DUMPSTER_FIRE, "Reset Settings"),
 		FSUI_STR("Are you sure you want to restore the default settings? Any preferences will be lost."), [](bool result) {
 			if (result)
 			{
@@ -3895,7 +3900,7 @@ void FullscreenUI::DrawControllerSettingsPage()
 	}
 	else
 	{
-		if (MenuButton(FSUI_ICONSTR(ICON_FA_FOLDER_MINUS, "Reset Settings"),
+		if (MenuButton(FSUI_ICONSTR(ICON_FA_DUMPSTER_FIRE, "Reset Settings"),
 				FSUI_CSTR("Resets all configuration to defaults (including bindings).")))
 		{
 			ResetControllerSettings();

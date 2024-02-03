@@ -1147,11 +1147,6 @@ struct Pcsx2Config
 		HostFs : 1,
 
 		WarnAboutUnsafeSettings : 1;
-
-	// uses automatic ntfs compression when creating new memory cards (Win32 only)
-#ifdef _WIN32
-	bool McdCompressNTFS;
-#endif
 	BITFIELD_END
 
 	CpuOptions Cpu;
@@ -1216,11 +1211,11 @@ namespace EmuFolders
 	extern std::string AppRoot;
 	extern std::string DataRoot;
 	extern std::string Settings;
+	extern std::string DebuggerSettings;
 	extern std::string Bios;
 	extern std::string Snapshots;
 	extern std::string Savestates;
 	extern std::string MemoryCards;
-	extern std::string Langs;
 	extern std::string Logs;
 	extern std::string Cheats;
 	extern std::string Patches;
