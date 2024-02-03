@@ -1,0 +1,33 @@
+[TOOL]
+gametitle=Jak II [Demo] - (U)(SCUS-97273)
+author=Luminar
+description=Makes the game boot in Debug Mode. You will spawn in the void. Use the Debug Menu to escape.
+comment=Enables Developer/Debug Mode - Credit to water111 and Vaser for discovering / documenting the required ELF edits for the Jak 2 Demo. 
+comment=Thanks to Luminar Light for figuring out how to get around the missing level problem.
+comment=You will spawn in the void. Use the Debug Menu to escape.
+
+// NOP Disabling MasterDebug
+patch=0,EE,001002ec,word,00000000
+// NOP Disabling DebugSegment
+patch=0,EE,001002f4,word,00000000
+// NOP SendFromBufferD call in InitListener - This is called only when MasterDebug is on
+patch=0,EE,00108660,word,00000000
+
+// 0x4ff0000 for global heap initialization - Set in InitMachine
+patch=0,EE,00102fac,word,3c0604ff
+
+// This is about changing the stack pointer
+// Shoves a MIPS instruction into near the very top of the entry point
+// Ghidra blows up here, but binary ninja can handle it
+// Orginally at this position there is `2D E8 40 00` - `daddu $sp, $v0, $zero`
+// This changes it to - `lui sp, 0x0800` Which loads the value 0x0800 to the stackpointer register, modifying it.
+patch=0,EE,00100068,word,3c1d0800
+
+// This changes the DebugBootMessage from `demo` to `play`.
+patch=0,EE,00126e10,word,79616c70
+
+// The levels that the game wants to load on startup with 'play' DebugBootMessage are missing. Getting around this problem with DebugBootLevel is not a correct solution, since it modifies how the game looks for DGO files - making most levels unreachable.
+// It is possible to tell the game to load a different DGO instead of the missing ones. The patches below will make the game load 'DEMO.DGO' instead of 'FEA.DGO' and 'PRI.DGO'.
+// These are the only two levels that it wants on startup - the game will work fine now, but you will spawn in the void. Just use the Debug Menu to escape.
+patch=1,EE,0077BB18,word,6f6d6564
+patch=1,EE,0077C1B8,word,6f6d6564
