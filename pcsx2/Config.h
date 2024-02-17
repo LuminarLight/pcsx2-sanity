@@ -1133,7 +1133,6 @@ struct Pcsx2Config
 		EnableToolMode : 1,
 		EnableFastBoot : 1,
 		EnableFastBootFastForward : 1,
-		EnablePerGameSettings : 1,
 		// TODO - Vaser - where are these settings exposed in the Qt UI?
 		EnableRecordingTools : 1,
 		EnableGameFixes : 1, // enables automatic game fixes

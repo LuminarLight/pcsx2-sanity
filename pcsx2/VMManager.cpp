@@ -849,7 +849,7 @@ std::string VMManager::GetSerialForGameSettings()
 bool VMManager::UpdateGameSettingsLayer()
 {
 	std::unique_ptr<INISettingsInterface> new_interface;
-	if (s_disc_crc != 0 && EmuConfig.EnablePerGameSettings)
+	if (s_disc_crc != 0)
 	{
 		std::string filename(GetGameSettingsPath(GetSerialForGameSettings(), s_disc_crc));
 		if (!FileSystem::FileExists(filename.c_str()))
@@ -1495,6 +1495,10 @@ void VMManager::Shutdown(bool save_resume_state)
 		if (!resume_file_name.empty() && !DoSaveState(resume_file_name.c_str(), -1, true, false))
 			Console.Error("Failed to save resume state");
 	}
+
+	// end input recording before clearing state
+	if (g_InputRecording.isActive())
+		g_InputRecording.stop();
 
 	SaveSessionTime(s_disc_serial);
 	s_elf_override = {};

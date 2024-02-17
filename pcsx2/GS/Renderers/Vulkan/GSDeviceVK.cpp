@@ -1312,7 +1312,7 @@ void GSDeviceVK::StopPresentThread()
 	{
 		std::unique_lock<std::mutex> lock(m_present_mutex);
 		WaitForPresentComplete(lock);
-		m_present_thread_done.store(true, std::memory_order_acquire);
+		m_present_thread_done.store(true, std::memory_order_release);
 		m_present_queued_cv.notify_one();
 	}
 
@@ -1579,7 +1579,7 @@ VkRenderPass GSDeviceVK::CreateCachedRenderPass(RenderPassCacheKey key)
 				input_reference_ptr = &input_reference;
 			}
 
-			if (!m_optional_extensions.vk_ext_rasterization_order_attachment_access)
+			if (!m_features.framebuffer_fetch)
 			{
 				// don't need the framebuffer-local dependency when we have rasterization order attachment access
 				subpass_dependency.srcSubpass = 0;
