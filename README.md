@@ -26,6 +26,8 @@ If you have any changes that you think would improve the emulator but would get 
 
 https://github.com/PCSX2/pcsx2/wiki/12-Building-on-Windows
 
+https://github.com/PCSX2/pcsx2-windows-dependencies/releases/
+
 `git submodule update --init --recursive`
 
 
