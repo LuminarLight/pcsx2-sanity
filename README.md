@@ -22,6 +22,13 @@ If you have any changes that you think would improve the emulator but would get 
 - Merge the new extra memory setting with our TOOL Mode setting.
 
 
+### Notes for building and updating the project locally
+
+https://github.com/PCSX2/pcsx2/wiki/12-Building-on-Windows
+
+`git submodule update --init --recursive`
+
+
 And here is the parent's README:
 ---
 
