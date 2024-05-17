@@ -37,19 +37,23 @@
   region: "NTSC-U"
   compat: 5
   gsHWFixes:
+    recommendedBlendingLevel: 3 # Improves reflection quality.
     mipmap: 2 # Fixes broken textures.
     trilinearFiltering: 1 # Fixes water textures.
     cpuSpriteRenderBW: 4 # Fixes character and water textures.
     cpuSpriteRenderLevel: 2 # Needed for above.
+    autoFlush: 2 # Fixes gate warp effect and emissive texture effects.
 C6124FF2:
   name: "Jak and Daxter - The Precursor Legacy [October 19 2001 Build]"
   region: "NTSC-U"
   compat: 5
   gsHWFixes:
+    recommendedBlendingLevel: 3 # Improves reflection quality.
     mipmap: 2 # Fixes broken textures.
     trilinearFiltering: 1 # Fixes water textures.
     cpuSpriteRenderBW: 4 # Fixes character and water textures.
     cpuSpriteRenderLevel: 2 # Needed for above.
+    autoFlush: 2 # Fixes gate warp effect and emissive texture effects.
 4FF025AF:
   name: "Jak II: Renegade [July 2003 Preview]"
   region: "PAL"
