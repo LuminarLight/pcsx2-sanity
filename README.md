@@ -7,7 +7,7 @@ If you have any changes that you think would improve the emulator but would get 
 ### Current divergences from parent repository
 - Included 'Sanity' in the application's name at most places.
 - Reworked the auto-updater. It no longer relies on the PCSX2 website, instead it now relies only on GitHub. This gives us full independence.
-- Integrated memory-increasing changes from the [128MB Build](https://github.com/xTVaser/pcsx2-rr/tree/128mb-build) of PCSX2, which means that we have 128MB EE memory now. This shouldn't impact games that don't use it.
+- ~~Integrated memory-increasing changes from the [128MB Build](https://github.com/xTVaser/pcsx2-rr/tree/128mb-build) of PCSX2, which means that we have 128MB EE memory now. This shouldn't impact games that don't use it.~~ Official PCSX2 now has this feature, and it is even better.
 - If a 'DRIVERS\FIREWIRE.IRX' or a 'DISKINFO.BIN' file exists on the disc, then it will be treated as the main ELF for booting and CRC purposes. If neither are found, the old behaviour will be used (looking up 'SYSTEM.CNF' and getting ELF path from there). This had to be done because in Jak pre-release builds, the "official" ELF is just a loader for these files, and this loader is usually fully identical between different pre-release builds of the same Jak game, which means they also have same CRC, making patches and everything impossible. But the FIREWIRE.IRX and DISKINFO.BIN files are (almost always) unique, allowing us to uniquely identify these builds. A nice side-effect of booting these files directly is that we completely avoid the WIBU protection.
 - Assign serial code 'X' to ISOs where we treat FIREWIRE.IRX or DISKINFO.BIN as the main ELF. Because per-game settings for some reason don't work if the serial is empty.
 - GitHub releases for the project are no longer automatic. I think manual is better for a project like this.
@@ -19,6 +19,7 @@ If you have any changes that you think would improve the emulator but would get 
 ### Plans/TODO:
 - Properly get the serial even if we use FIREWIRE.IRX or DISKINFO.BIN as main ELF for an ISO.
 - Prevent non-labelled patches. This is PCSX2-Sanity, we can expect our users to adapt their pnach files. In most cases they just have to add one line to the top of the file.
+- Merge the new extra memory setting with our TOOL Mode setting.
 
 
 And here is the parent's README:
