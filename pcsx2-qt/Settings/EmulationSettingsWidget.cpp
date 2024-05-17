@@ -139,8 +139,10 @@ EmulationSettingsWidget::EmulationSettingsWidget(SettingsWindow* dialog, QWidget
 		   "the console's refresh rate is too far from the host's refresh rate. Users with variable refresh rate displays "
 		   "should disable this option."));
 
-	dialog->registerWidgetHelp(m_ui.toolMode, tr("Enable TOOL Mode"), tr("Unchecked"),
-		tr("Will load TOOL patches, but all other patches will be disabled while this is active."));
+	dialog->registerWidgetHelp(m_ui.toolMode, tr("Enable TOOL Patches"), tr("Unchecked"),
+		tr("Will load TOOL patches, but all other patches will be disabled while this is active. "
+		   "Be sure to enable 'Advanced -> Enable 128MB RAM (Dev Console)', otherwise these patches will cause issues. "
+		   "This setting may get merged with that one in the future."));
 
 	updateOptimalFramePacing();
 }

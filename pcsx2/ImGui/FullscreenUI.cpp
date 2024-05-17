@@ -3637,7 +3637,10 @@ void FullscreenUI::DrawGraphicsSettingsPage(SettingsInterface* bsi, bool show_ad
 		DrawToggleSetting(bsi, FSUI_CSTR("Enable No-Interlacing Patches"),
 			FSUI_CSTR("Enables loading no-interlacing patches from pnach files."), "EmuCore", "EnableNoInterlacingPatches", false);
 		DrawToggleSetting(bsi, FSUI_CSTR("Enable TOOL Mode"),
-			FSUI_CSTR("Will load TOOL patches, but all other patches will be disabled while this is active."), "EmuCore", "EnableToolMode", false);
+			FSUI_CSTR("Will load TOOL patches, but all other patches will be disabled while this is active."
+					  "Be sure to enable 'Advanced -> Enable 128MB RAM (Dev Console)', otherwise these patches will cause issues. "
+					  "This setting may get merged with that one in the future."),
+			"EmuCore", "EnableToolMode", false);
 	}
 
 	DrawIntListSetting(bsi, FSUI_CSTR("Bilinear Upscaling"), FSUI_CSTR("Smooths out the image when upscaling the console to the screen."),
