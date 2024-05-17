@@ -356,14 +356,14 @@
          <item row="0" column="0">
           <widget class="QCheckBox" name="widescreenPatches">
            <property name="text">
-            <string>Enable Widescreen Patches</string>
+            <string>Apply Widescreen Patches</string>
            </property>
           </widget>
          </item>
          <item row="0" column="1">
           <widget class="QCheckBox" name="noInterlacingPatches">
            <property name="text">
-            <string>Enable No-Interlacing Patches</string>
+            <string>Apply No-Interlacing Patches</string>
            </property>
           </widget>
          </item>
@@ -399,17 +399,17 @@
           <widget class="QComboBox" name="screenshotSize">
            <item>
             <property name="text">
-             <string>Screen Resolution</string>
+             <string>Window Resolution (Aspect Corrected)</string>
             </property>
            </item>
            <item>
             <property name="text">
-             <string>Internal Resolution</string>
+             <string>Internal Resolution (Aspect Corrected)</string>
             </property>
            </item>
            <item>
             <property name="text">
-             <string>Internal Resolution (Aspect Uncorrected)</string>
+             <string>Internal Resolution (No Aspect Correction)</string>
             </property>
            </item>
           </widget>
@@ -424,6 +424,11 @@
            <item>
             <property name="text">
              <string>JPEG</string>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>WebP</string>
             </property>
            </item>
           </widget>
@@ -2151,13 +2156,6 @@
               </property>
              </widget>
             </item>
-            <item row="0" column="0">
-             <widget class="QCheckBox" name="disableDualSource">
-              <property name="text">
-               <string>Disable Dual-Source Blending</string>
-              </property>
-             </widget>
-            </item>
             <item row="1" column="0">
              <widget class="QCheckBox" name="disableShaderCache">
               <property name="text">
@@ -2165,17 +2163,17 @@
               </property>
              </widget>
             </item>
-            <item row="2" column="0">
-             <widget class="QCheckBox" name="useDebugDevice">
-              <property name="text">
-               <string>Use Debug Device</string>
-              </property>
-             </widget>
-            </item>
             <item row="1" column="1">
              <widget class="QCheckBox" name="disableVertexShaderExpand">
               <property name="text">
                <string>Disable Vertex Shader Expand</string>
+              </property>
+             </widget>
+            </item>
+            <item row="0" column="0">
+             <widget class="QCheckBox" name="useDebugDevice">
+              <property name="text">
+               <string>Use Debug Device</string>
               </property>
              </widget>
             </item>

@@ -52,14 +52,13 @@ enum class GSDisplayAlignment
 class SmallStringBase;
 
 // Returns the ID for the specified function, otherwise -1.
-s16 GSLookupGetSkipCountFunctionId(const std::string_view& name);
-s16 GSLookupBeforeDrawFunctionId(const std::string_view& name);
-s16 GSLookupMoveHandlerFunctionId(const std::string_view& name);
+s16 GSLookupGetSkipCountFunctionId(const std::string_view name);
+s16 GSLookupBeforeDrawFunctionId(const std::string_view name);
+s16 GSLookupMoveHandlerFunctionId(const std::string_view name);
 
-void GSinit();
-void GSshutdown();
 bool GSopen(const Pcsx2Config::GSOptions& config, GSRendererType renderer, u8* basemem);
-bool GSreopen(bool recreate_device, GSRendererType new_renderer, std::optional<const Pcsx2Config::GSOptions*> old_config);
+bool GSreopen(bool recreate_device, bool recreate_renderer, GSRendererType new_renderer,
+	std::optional<const Pcsx2Config::GSOptions*> old_config);
 void GSreset(bool hardware_reset);
 void GSclose();
 void GSgifSoftReset(u32 mask);
@@ -85,7 +84,7 @@ void GSSetDisplayAlignment(GSDisplayAlignment alignment);
 bool GSHasDisplayWindow();
 void GSResizeDisplayWindow(int width, int height, float scale);
 void GSUpdateDisplayWindow();
-void GSSetVSyncMode(VsyncMode mode);
+void GSSetVSyncEnabled(bool enabled);
 
 GSRendererType GSGetCurrentRenderer();
 bool GSIsHardwareRenderer();
@@ -128,7 +127,7 @@ namespace Host
 	void SetFullscreen(bool enabled);
 
 	/// Returns the desired vsync mode, depending on the runtime environment.
-	VsyncMode GetEffectiveVSyncMode();
+	bool IsVsyncEffectivelyEnabled();
 
 	/// Called when video capture starts or stops. Called on the MTGS thread.
 	void OnCaptureStarted(const std::string& filename);

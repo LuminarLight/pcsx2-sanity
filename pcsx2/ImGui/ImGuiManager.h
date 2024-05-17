@@ -35,7 +35,7 @@ namespace ImGuiManager
 	void WindowResized();
 
 	/// Updates scaling of the on-screen elements.
-	void UpdateScale();
+	void RequestScaleUpdate();
 
 	/// Call at the beginning of the frame to set up ImGui state.
 	void NewFrame();
@@ -103,6 +103,9 @@ namespace ImGuiManager
 
 	/// Sets the position of a software cursor, used when we have relative coordinates such as controllers.
 	void SetSoftwareCursorPosition(u32 index, float pos_x, float pos_y);
+
+	/// Strips icon characters from a string.
+	std::string StripIconCharacters(std::string_view str);
 } // namespace ImGuiManager
 
 namespace Host

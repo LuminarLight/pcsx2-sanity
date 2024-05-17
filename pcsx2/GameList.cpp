@@ -54,10 +54,10 @@ namespace GameList
 	using CacheMap = UnorderedStringMap<Entry>;
 	using PlayedTimeMap = UnorderedStringMap<PlayedTimeEntry>;
 
-	static bool IsScannableFilename(const std::string_view& path);
+	static bool IsScannableFilename(const std::string_view path);
 
 	static bool GetIsoSerialAndCRC(const std::string& path, s32* disc_type, std::string* serial, u32* crc);
-	static Region ParseDatabaseRegion(const std::string_view& db_region);
+	static Region ParseDatabaseRegion(const std::string_view db_region);
 	static bool GetElfListEntry(const std::string& path, GameList::Entry* entry);
 	static bool GetIsoListEntry(const std::string& path, GameList::Entry* entry);
 
@@ -129,7 +129,7 @@ const char* GameList::EntryCompatibilityRatingToString(CompatibilityRating ratin
 	// clang-format on
 }
 
-bool GameList::IsScannableFilename(const std::string_view& path)
+bool GameList::IsScannableFilename(const std::string_view path)
 {
 	return VMManager::IsDiscFileName(path) || VMManager::IsElfFileName(path);
 }
@@ -212,7 +212,7 @@ bool GameList::GetElfListEntry(const std::string& path, GameList::Entry* entry)
 	return true;
 }
 
-GameList::Region GameList::ParseDatabaseRegion(const std::string_view& db_region)
+GameList::Region GameList::ParseDatabaseRegion(const std::string_view db_region)
 {
 	// clang-format off
 						////// NTSC //////
@@ -747,7 +747,7 @@ const GameList::Entry* GameList::GetEntryByCRC(u32 crc)
 	return nullptr;
 }
 
-const GameList::Entry* GameList::GetEntryBySerialAndCRC(const std::string_view& serial, u32 crc)
+const GameList::Entry* GameList::GetEntryBySerialAndCRC(const std::string_view serial, u32 crc)
 {
 	for (const Entry& entry : s_entries)
 	{
@@ -1139,9 +1139,9 @@ std::string GameList::FormatTimespan(std::time_t timespan, bool long_format)
 	else
 	{
 		if (hours > 0)
-			ret = fmt::format(TRANSLATE_FS("GameList", "{} hours"), hours);
+			ret.assign(TRANSLATE_PLURAL_STR("GameList", "%n hours", "", hours));
 		else
-			ret = fmt::format(TRANSLATE_FS("GameList", "{} minutes"), minutes);
+			ret.assign(TRANSLATE_PLURAL_STR("GameList", "%n minutes", "", minutes));
 	}
 
 	return ret;
@@ -1260,11 +1260,11 @@ bool GameList::DownloadCovers(const std::vector<std::string>& url_templates, boo
 			{
 				std::string url(url_template);
 				if (has_title)
-					StringUtil::ReplaceAll(&url, "${title}", HTTPDownloader::URLEncode(entry.title));
+					StringUtil::ReplaceAll(&url, "${title}", Path::URLEncode(entry.title));
 				if (has_file_title)
-					StringUtil::ReplaceAll(&url, "${filetitle}", HTTPDownloader::URLEncode(Path::GetFileTitle(entry.path)));
+					StringUtil::ReplaceAll(&url, "${filetitle}", Path::URLEncode(Path::GetFileTitle(entry.path)));
 				if (has_serial)
-					StringUtil::ReplaceAll(&url, "${serial}", HTTPDownloader::URLEncode(entry.serial));
+					StringUtil::ReplaceAll(&url, "${serial}", Path::URLEncode(entry.serial));
 
 				download_urls.emplace_back(entry.path, std::move(url));
 			}
@@ -1305,7 +1305,7 @@ bool GameList::DownloadCovers(const std::vector<std::string>& url_templates, boo
 		}
 
 		// we could actually do a few in parallel here...
-		std::string filename(HTTPDownloader::URLDecode(url));
+		std::string filename = Path::URLDecode(url);
 		downloader->CreateRequest(
 			std::move(url), [use_serial, &save_callback, entry_path = std::move(entry_path), filename = std::move(filename)](
 								s32 status_code, const std::string& content_type, HTTPDownloader::Request::Data data) {

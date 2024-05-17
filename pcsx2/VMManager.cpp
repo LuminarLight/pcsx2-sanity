@@ -6,6 +6,7 @@
 #include "CDVD/IsoReader.h"
 #include "Counters.h"
 #include "DEV9/DEV9.h"
+#include "DebugTools/DebugInterface.h"
 #include "DebugTools/MIPSAnalyst.h"
 #include "DebugTools/SymbolMap.h"
 #include "Elfheader.h"
@@ -53,6 +54,7 @@
 #include "common/Timer.h"
 
 #include "IconsFontAwesome5.h"
+#include "IconsPromptFont.h"
 #include "cpuinfo.h"
 #include "discord_rpc.h"
 #include "fmt/core.h"
@@ -65,6 +67,9 @@
 #include "common/RedtapeWindows.h"
 #include <objbase.h>
 #include <timeapi.h>
+#include <powrprof.h>
+#include <wil/com.h>
+#include <dxgi.h>
 #endif
 
 #ifdef __APPLE__
@@ -120,15 +125,15 @@ namespace VMManager
 		s32 slot_for_message);
 
 	static void LoadSettings();
-	static void LoadCoreSettings(SettingsInterface* si);
+	static void LoadCoreSettings(SettingsInterface& si);
 	static void ApplyCoreSettings();
+	static void LoadInputBindings(SettingsInterface& si, std::unique_lock<std::mutex>& lock);
 	static void UpdateInhibitScreensaver(bool allow);
 	static void AccumulateSessionPlaytime();
 	static void ResetResumeTimestamp();
 	static void SaveSessionTime(const std::string& prev_serial);
 	static void ReloadPINE();
 
-	static LimiterModeType GetInitialLimiterMode();
 	static float GetTargetSpeedForLimiterMode(LimiterModeType mode);
 	static void ResetFrameLimiter();
 	static double AdjustToHostRefreshRate(float frame_rate, float target_speed);
@@ -181,6 +186,7 @@ static LimiterModeType s_limiter_mode = LimiterModeType::Nominal;
 static s64 s_limiter_ticks_per_frame = 0;
 static u64 s_limiter_frame_start = 0;
 static float s_target_speed = 0.0f;
+static bool s_target_speed_synced_to_host = false;
 static bool s_use_vsync_for_timing = false;
 
 // Used to track play time. We use a monotonic timer here, in case of clock changes.
@@ -389,7 +395,6 @@ bool VMManager::Internal::CPUThreadInitialize()
 
 	InitializeCPUProviders();
 
-	GSinit();
 	USBinit();
 
 	// We want settings loaded so we choose the correct renderer for big picture mode.
@@ -421,9 +426,9 @@ void VMManager::Internal::CPUThreadShutdown()
 	PerformanceMetrics::SetCPUThread(Threading::ThreadHandle());
 
 	USBshutdown();
-	GSshutdown();
 
 	MTGS::ShutdownThread();
+	GSJoinSnapshotThreads();
 
 	ShutdownCPUProviders();
 
@@ -574,11 +579,11 @@ void VMManager::LoadSettings()
 
 	std::unique_lock<std::mutex> lock = Host::GetSettingsLock();
 	SettingsInterface* si = Host::GetSettingsInterface();
-	LoadCoreSettings(si);
+	LoadCoreSettings(*si);
 	Pad::LoadConfig(*si);
 	Host::LoadSettings(*si, lock);
 	InputManager::ReloadSources(*si, lock);
-	InputManager::ReloadBindings(*si, *Host::GetSettingsInterfaceForBindings());
+	LoadInputBindings(*si, lock);
 	UpdateLoggingSettings(*si);
 
 	if (HasValidOrInitializingVM())
@@ -588,9 +593,33 @@ void VMManager::LoadSettings()
 	}
 }
 
-void VMManager::LoadCoreSettings(SettingsInterface* si)
+void VMManager::ReloadInputSources()
 {
-	SettingsLoadWrapper slw(*si);
+	FPControlRegisterBackup fpcr_backup(FPControlRegister::GetDefault());
+	std::unique_lock<std::mutex> lock = Host::GetSettingsLock();
+	SettingsInterface* si = Host::GetSettingsInterface();
+	InputManager::ReloadSources(*si, lock);
+
+	// skip loading bindings if we're not running, since it'll get done on startup anyway
+	if (HasValidVM())
+		LoadInputBindings(*si, lock);
+}
+
+void VMManager::ReloadInputBindings()
+{
+	// skip loading bindings if we're not running, since it'll get done on startup anyway
+	if (!HasValidVM())
+		return;
+
+	FPControlRegisterBackup fpcr_backup(FPControlRegister::GetDefault());
+	std::unique_lock<std::mutex> lock = Host::GetSettingsLock();
+	SettingsInterface* si = Host::GetSettingsInterface();
+	LoadInputBindings(*si, lock);
+}
+
+void VMManager::LoadCoreSettings(SettingsInterface& si)
+{
+	SettingsLoadWrapper slw(si);
 	EmuConfig.LoadSave(slw);
 	Patch::ApplyPatchSettingOverrides();
 
@@ -604,6 +633,35 @@ void VMManager::LoadCoreSettings(SettingsInterface* si)
 	// Force MTVU off when playing back GS dumps, it doesn't get used.
 	if (GSDumpReplayer::IsReplayingDump())
 		EmuConfig.Speedhacks.vuThread = false;
+}
+
+void VMManager::LoadInputBindings(SettingsInterface& si, std::unique_lock<std::mutex>& lock)
+{
+	// Hotkeys use the base configuration, except if the custom hotkeys option is enabled.
+	if (SettingsInterface* isi = Host::Internal::GetInputSettingsLayer())
+	{
+		const bool use_profile_hotkeys = isi->GetBoolValue("Pad", "UseProfileHotkeyBindings", false);
+		if (use_profile_hotkeys)
+		{
+			InputManager::ReloadBindings(si, *isi, *isi);
+		}
+		else
+		{
+			// Temporarily disable the input profile layer, so it doesn't take precedence.
+			Host::Internal::SetInputSettingsLayer(nullptr, lock);
+			InputManager::ReloadBindings(si, *isi, si);
+			Host::Internal::SetInputSettingsLayer(s_input_settings_interface.get(), lock);
+		}
+	}
+	else if (SettingsInterface* gsi = Host::Internal::GetGameSettingsLayer();
+			 gsi && gsi->GetBoolValue("Pad", "UseGameSettingsForController", false))
+	{
+		InputManager::ReloadBindings(si, *gsi, si);
+	}
+	else
+	{
+		InputManager::ReloadBindings(si, si, si);
+	}
 }
 
 void VMManager::ApplyGameFixes()
@@ -674,7 +732,7 @@ void VMManager::ApplyCoreSettings()
 	{
 		FPControlRegisterBackup fpcr_backup(FPControlRegister::GetDefault());
 		std::unique_lock<std::mutex> lock = Host::GetSettingsLock();
-		LoadCoreSettings(Host::GetSettingsInterface());
+		LoadCoreSettings(*Host::GetSettingsInterface());
 		WarnAboutUnsafeSettings();
 		ApplyGameFixes();
 	}
@@ -693,7 +751,7 @@ bool VMManager::ReloadGameSettings()
 	return true;
 }
 
-std::string VMManager::GetGameSettingsPath(const std::string_view& game_serial, u32 game_crc)
+std::string VMManager::GetGameSettingsPath(const std::string_view game_serial, u32 game_crc)
 {
 	std::string sanitized_serial(Path::SanitizeFileName(game_serial));
 
@@ -724,12 +782,12 @@ std::string VMManager::GetDiscOverrideFromGameSettings(const std::string& elf_pa
 	return iso_path;
 }
 
-std::string VMManager::GetInputProfilePath(const std::string_view& name)
+std::string VMManager::GetInputProfilePath(const std::string_view name)
 {
 	return Path::Combine(EmuFolders::InputProfiles, fmt::format("{}.ini", name));
 }
 
-std::string VMManager::GetDebuggerSettingsFilePath(const std::string_view& game_serial, u32 game_crc)
+std::string VMManager::GetDebuggerSettingsFilePath(const std::string_view game_serial, u32 game_crc)
 {
 	std::string path;
 	if (!game_serial.empty() && game_crc != 0)
@@ -875,53 +933,42 @@ bool VMManager::UpdateGameSettingsLayer()
 	}
 
 	std::string input_profile_name;
-	bool use_game_settings_for_controller = false;
 	if (new_interface)
 	{
-		new_interface->GetBoolValue("Pad", "UseGameSettingsForController", &use_game_settings_for_controller);
-		if (!use_game_settings_for_controller)
+		if (!new_interface->GetBoolValue("Pad", "UseGameSettingsForController", false))
 			new_interface->GetStringValue("EmuCore", "InputProfileName", &input_profile_name);
 	}
 
 	if (!s_game_settings_interface && !new_interface && s_input_profile_name == input_profile_name)
 		return false;
 
-	Host::Internal::SetGameSettingsLayer(new_interface.get());
+	auto lock = Host::GetSettingsLock();
+	Host::Internal::SetGameSettingsLayer(new_interface.get(), lock);
 	s_game_settings_interface = std::move(new_interface);
 
 	std::unique_ptr<INISettingsInterface> input_interface;
-	if (!use_game_settings_for_controller)
+	if (!input_profile_name.empty())
 	{
-		if (!input_profile_name.empty())
+		const std::string filename(GetInputProfilePath(input_profile_name));
+		if (FileSystem::FileExists(filename.c_str()))
 		{
-			const std::string filename(GetInputProfilePath(input_profile_name));
-			if (FileSystem::FileExists(filename.c_str()))
+			Console.WriteLn("Loading input profile from '%s'...", filename.c_str());
+			input_interface = std::make_unique<INISettingsInterface>(std::move(filename));
+			if (!input_interface->Load())
 			{
-				Console.WriteLn("Loading input profile from '%s'...", filename.c_str());
-				input_interface = std::make_unique<INISettingsInterface>(std::move(filename));
-				if (!input_interface->Load())
-				{
-					Console.Error("Failed to parse input profile ini '%s'", input_interface->GetFileName().c_str());
-					input_interface.reset();
-					input_profile_name = {};
-				}
-			}
-			else
-			{
-				DevCon.WriteLn("No game settings found (tried '%s')", filename.c_str());
+				Console.Error("Failed to parse input profile ini '%s'", input_interface->GetFileName().c_str());
+				input_interface.reset();
 				input_profile_name = {};
 			}
 		}
-
-		Host::Internal::SetInputSettingsLayer(
-			input_interface ? input_interface.get() : Host::Internal::GetBaseSettingsLayer());
-	}
-	else
-	{
-		// using game settings for bindings too
-		Host::Internal::SetInputSettingsLayer(s_game_settings_interface.get());
+		else
+		{
+			DevCon.WriteLn("No game settings found (tried '%s')", filename.c_str());
+			input_profile_name = {};
+		}
 	}
 
+	Host::Internal::SetInputSettingsLayer(input_interface.get(), lock);
 	s_input_settings_interface = std::move(input_interface);
 	s_input_profile_name = std::move(input_profile_name);
 	return true;
@@ -1317,43 +1364,63 @@ bool VMManager::Initialize(VMBootParameters boot_params)
 		Hle_ClearHostRoot();
 	}
 
-	// Check for resuming with hardcore mode.
+	// Check for resuming and 'Boot and Debug' with hardcore mode.
 	// Why do we need the boot param? Because we need some way of telling BootSystem() that
 	// the user allowed HC mode to be disabled, because otherwise we'll ResetHardcoreMode()
 	// and send ourselves into an infinite loop.
 	if (boot_params.disable_achievements_hardcore_mode)
 		Achievements::DisableHardcoreMode();
 	else
-		Achievements::ResetHardcoreMode();
-	if (!state_to_load.empty() && Achievements::IsHardcoreModeActive())
+		Achievements::ResetHardcoreMode(true);
+	if (Achievements::IsHardcoreModeActive())
 	{
-		if (FullscreenUI::IsInitialized())
+		auto confirmHardcoreModeDisable = [&boot_params, &state_to_load](const char* trigger) mutable {
+			if (FullscreenUI::IsInitialized())
+			{
+				boot_params.elf_override = std::move(s_elf_override);
+				boot_params.save_state = std::move(state_to_load);
+				boot_params.disable_achievements_hardcore_mode = true;
+				s_elf_override = {};
+
+				Achievements::ConfirmHardcoreModeDisableAsync(trigger,
+					[boot_params = std::move(boot_params)](bool approved) mutable {
+						if (approved && Initialize(std::move(boot_params)))
+							SetState(VMState::Running);
+					});
+
+				return false;
+			}
+			else if (!Achievements::ConfirmHardcoreModeDisable(trigger))
+			{
+				return false;
+			}
+			return true;
+		};
+
+		if (!state_to_load.empty())
 		{
-			boot_params.elf_override = std::move(s_elf_override);
-			boot_params.save_state = std::move(state_to_load);
-			boot_params.disable_achievements_hardcore_mode = true;
-			s_elf_override = {};
-
-			Achievements::ConfirmHardcoreModeDisableAsync(TRANSLATE("VMManager", "Resuming state"),
-				[boot_params = std::move(boot_params)](bool approved) mutable {
-					if (approved && Initialize(std::move(boot_params)))
-						SetState(VMState::Running);
-				});
-
-			return false;
+			if (!confirmHardcoreModeDisable(TRANSLATE("VMManager", "Resuming state")))
+			{
+				return false;
+			}
 		}
-		else if (!Achievements::ConfirmHardcoreModeDisable(TRANSLATE("VMManager", "Resuming state")))
+		if (DebugInterface::getPauseOnEntry())
 		{
-			return false;
+			if (!confirmHardcoreModeDisable(TRANSLATE("VMManager", "Boot and Debug")))
+			{
+				return false;
+			}
 		}
 	}
 
-	s_limiter_mode = GetInitialLimiterMode();
+	s_limiter_mode = LimiterModeType::Nominal;
 	s_target_speed = GetTargetSpeedForLimiterMode(s_limiter_mode);
 	s_use_vsync_for_timing = false;
 
 	s_cpu_implementation_changed = false;
 	UpdateCPUImplementations();
+	mmap_ResetBlockTracking();
+	memSetExtraMemMode(EmuConfig.Cpu.ExtraMemory);
 	Internal::ClearCPUExecutionCaches();
 	FPControlRegister::SetCurrent(EmuConfig.Cpu.FPUFPCR);
 	memBindConditionalHandlers();
@@ -1582,7 +1649,7 @@ void VMManager::Reset()
 		return;
 
 	// Re-enforce hardcode mode constraints if we're now enabling it.
-	if (Achievements::ResetHardcoreMode())
+	if (Achievements::ResetHardcoreMode(false))
 		ApplySettings();
 
 	vu1Thread.WaitVU();
@@ -1594,6 +1661,8 @@ void VMManager::Reset()
 	if (elf_was_changed)
 		HandleELFChange(false);
 
+	mmap_ResetBlockTracking();
+	memSetExtraMemMode(EmuConfig.Cpu.ExtraMemory);
 	Internal::ClearCPUExecutionCaches();
 	memBindConditionalHandlers();
 	SysMemory::Reset();
@@ -1699,7 +1768,7 @@ bool VMManager::DoLoadState(const char* filename)
 	Error error;
 	if (!SaveState_UnzipFromDisk(filename, &error))
 	{
-		Host::ReportErrorAsync("Failed to load save state", error.GetDescription());
+		Host::ReportErrorAsync(TRANSLATE_SV("VMManager", "Failed to load save state"), error.GetDescription());
 		return false;
 	}
 
@@ -1957,16 +2026,11 @@ float VMManager::GetTargetSpeed()
 	return s_target_speed;
 }
 
-LimiterModeType VMManager::GetInitialLimiterMode()
-{
-	return EmuConfig.EmulationSpeed.FrameLimitEnable ? LimiterModeType::Nominal : LimiterModeType::Unlimited;
-}
-
 double VMManager::AdjustToHostRefreshRate(float frame_rate, float target_speed)
 {
 	if (!EmuConfig.EmulationSpeed.SyncToHostRefreshRate || target_speed != 1.0f)
 	{
-		SPU2::SetDeviceSampleRateMultiplier(1.0);
+		s_target_speed_synced_to_host = false;
 		s_use_vsync_for_timing = false;
 		return target_speed;
 	}
@@ -1975,48 +2039,43 @@ double VMManager::AdjustToHostRefreshRate(float frame_rate, float target_speed)
 	if (!GSGetHostRefreshRate(&host_refresh_rate))
 	{
 		Console.Warning("Cannot sync to host refresh since the query failed.");
-		SPU2::SetDeviceSampleRateMultiplier(1.0);
+		s_target_speed_synced_to_host = false;
 		s_use_vsync_for_timing = false;
 		return target_speed;
 	}
 
-	const double ratio = host_refresh_rate / frame_rate;
+	const float ratio = host_refresh_rate / frame_rate;
 	const bool syncing_to_host = (ratio >= 0.95f && ratio <= 1.05f);
-	s_use_vsync_for_timing = (syncing_to_host && !EmuConfig.GS.SkipDuplicateFrames && EmuConfig.GS.VsyncEnable != VsyncMode::Off);
+	s_target_speed_synced_to_host = syncing_to_host;
+	s_use_vsync_for_timing = (syncing_to_host && !EmuConfig.GS.SkipDuplicateFrames && EmuConfig.GS.VsyncEnable);
 	Console.WriteLn("Refresh rate: Host=%fhz Guest=%fhz Ratio=%f - %s %s", host_refresh_rate, frame_rate, ratio,
 		syncing_to_host ? "can sync" : "can't sync", s_use_vsync_for_timing ? "and using vsync for pacing" : "and using sleep for pacing");
 
-	if (!syncing_to_host)
-		return target_speed;
-
-	target_speed *= ratio;
-	SPU2::SetDeviceSampleRateMultiplier(ratio);
-	return target_speed;
+	return syncing_to_host ? ratio : target_speed;
 }
 
 float VMManager::GetTargetSpeedForLimiterMode(LimiterModeType mode)
 {
-	if (EmuConfig.EmulationSpeed.FrameLimitEnable && (!EmuConfig.EnableFastBootFastForward || !VMManager::Internal::IsFastBootInProgress()))
+	if (EmuConfig.EnableFastBootFastForward && VMManager::Internal::IsFastBootInProgress())
+		return 0.0f;
+
+	switch (s_limiter_mode)
 	{
-		switch (s_limiter_mode)
-		{
-			case LimiterModeType::Nominal:
-				return EmuConfig.EmulationSpeed.NominalScalar;
+		case LimiterModeType::Nominal:
+			return EmuConfig.EmulationSpeed.NominalScalar;
 
-			case LimiterModeType::Slomo:
-				return EmuConfig.EmulationSpeed.SlomoScalar;
+		case LimiterModeType::Slomo:
+			return EmuConfig.EmulationSpeed.SlomoScalar;
 
-			case LimiterModeType::Turbo:
-				return EmuConfig.EmulationSpeed.TurboScalar;
+		case LimiterModeType::Turbo:
+			return EmuConfig.EmulationSpeed.TurboScalar;
 
-			case LimiterModeType::Unlimited:
-				return 0.0f;
+		case LimiterModeType::Unlimited:
+			return 0.0f;
 
-				jNO_DEFAULT
-		}
+		default:
+			ASSUME(false);
 	}
-
-	return 0.0f;
 }
 
 void VMManager::UpdateTargetSpeed()
@@ -2035,10 +2094,15 @@ void VMManager::UpdateTargetSpeed()
 	{
 		s_target_speed = target_speed;
 
-		MTGS::UpdateVSyncMode();
+		MTGS::UpdateVSyncEnabled();
 		SPU2::OnTargetSpeedChanged();
 		ResetFrameLimiter();
 	}
+}
+
+bool VMManager::IsTargetSpeedAdjustedToHost()
+{
+	return s_target_speed_synced_to_host;
 }
 
 float VMManager::GetFrameRate()
@@ -2198,28 +2262,28 @@ bool VMManager::ChangeGSDump(const std::string& path)
 	return true;
 }
 
-bool VMManager::IsElfFileName(const std::string_view& path)
+bool VMManager::IsElfFileName(const std::string_view path)
 {
 	return StringUtil::EndsWithNoCase(path, ".elf");
 }
 
-bool VMManager::IsBlockDumpFileName(const std::string_view& path)
+bool VMManager::IsBlockDumpFileName(const std::string_view path)
 {
 	return StringUtil::EndsWithNoCase(path, ".dump");
 }
 
-bool VMManager::IsGSDumpFileName(const std::string_view& path)
+bool VMManager::IsGSDumpFileName(const std::string_view path)
 {
 	return (StringUtil::EndsWithNoCase(path, ".gs") || StringUtil::EndsWithNoCase(path, ".gs.xz") ||
 			StringUtil::EndsWithNoCase(path, ".gs.zst"));
 }
 
-bool VMManager::IsSaveStateFileName(const std::string_view& path)
+bool VMManager::IsSaveStateFileName(const std::string_view path)
 {
 	return StringUtil::EndsWithNoCase(path, ".p2s");
 }
 
-bool VMManager::IsDiscFileName(const std::string_view& path)
+bool VMManager::IsDiscFileName(const std::string_view path)
 {
 	static const char* extensions[] = {".iso", ".bin", ".img", ".mdf", ".gz", ".cso", ".zso", ".chd"};
 
@@ -2232,10 +2296,158 @@ bool VMManager::IsDiscFileName(const std::string_view& path)
 	return false;
 }
 
-bool VMManager::IsLoadableFileName(const std::string_view& path)
+bool VMManager::IsLoadableFileName(const std::string_view path)
 {
 	return IsDiscFileName(path) || IsElfFileName(path) || IsGSDumpFileName(path) || IsBlockDumpFileName(path);
 }
+
+#ifdef _WIN32
+inline void LogUserPowerPlan()
+{
+	wil::unique_any<GUID*, decltype(&::LocalFree), ::LocalFree> pPwrGUID;
+	DWORD ret = PowerGetActiveScheme(NULL, pPwrGUID.put());
+	if (ret != ERROR_SUCCESS)
+		return;
+
+	UCHAR aBuffer[2048];
+	DWORD aBufferSize = sizeof(aBuffer);
+	ret = PowerReadFriendlyName(NULL, pPwrGUID.get(), &NO_SUBGROUP_GUID, NULL, aBuffer, &aBufferSize);
+	std::string friendlyName(StringUtil::WideStringToUTF8String((wchar_t*)aBuffer));
+	if (ret != ERROR_SUCCESS)
+		return;
+
+	DWORD acMax = 0, acMin = 0, dcMax = 0, dcMin = 0;
+
+	if (PowerReadACValueIndex(NULL, pPwrGUID.get(), &GUID_PROCESSOR_SETTINGS_SUBGROUP, &GUID_PROCESSOR_THROTTLE_MAXIMUM, &acMax) ||
+		PowerReadACValueIndex(NULL, pPwrGUID.get(), &GUID_PROCESSOR_SETTINGS_SUBGROUP, &GUID_PROCESSOR_THROTTLE_MINIMUM, &acMin) ||
+		PowerReadDCValueIndex(NULL, pPwrGUID.get(), &GUID_PROCESSOR_SETTINGS_SUBGROUP, &GUID_PROCESSOR_THROTTLE_MAXIMUM, &dcMax) ||
+		PowerReadDCValueIndex(NULL, pPwrGUID.get(), &GUID_PROCESSOR_SETTINGS_SUBGROUP, &GUID_PROCESSOR_THROTTLE_MINIMUM, &dcMin))
+		return;
+
+	Console.WriteLnFmt(
+		"  Power Profile    = '{}'\n"
+		"  Power States (min/max)\n"
+		"    AC             = {}% / {}%\n"
+		"    Battery        = {}% / {}%\n",
+		friendlyName.c_str(), acMin, acMax, dcMin, dcMax);
+}
+#endif
+
+#if 0
+#if defined(__linux__) || defined(_WIN32)
+void LogGPUCapabilities()
+{
+	Console.WriteLn(Color_StrongBlack, "Graphics Adapters Detected:");
+#if defined(_WIN32)
+	IDXGIFactory1* pFactory = nullptr;
+	if (FAILED(CreateDXGIFactory1(__uuidof(IDXGIFactory1), (void**)&pFactory)))
+		return;
+
+	UINT i = 0;
+	IDXGIAdapter* pAdapter = nullptr;
+	while (pFactory->EnumAdapters(i, &pAdapter) != DXGI_ERROR_NOT_FOUND)
+	{
+		DXGI_ADAPTER_DESC desc;
+		LARGE_INTEGER umdver;
+		if (SUCCEEDED(pAdapter->GetDesc(&desc)) && SUCCEEDED(pAdapter->CheckInterfaceSupport(__uuidof(IDXGIDevice), &umdver)))
+		{
+			Console.WriteLnFmt(
+				"  GPU              = {}\n"
+				"  Driver Version   = {}.{}.{}.{}\n",
+				StringUtil::WideStringToUTF8String(desc.Description),
+				umdver.QuadPart >> 48,
+				(umdver.QuadPart >> 32) & 0xFFFF,
+				(umdver.QuadPart >> 16) & 0xFFFF,
+				umdver.QuadPart & 0xFFFF);
+
+			i++;
+			pAdapter->Release();
+			pAdapter = nullptr;
+		}
+		else
+		{
+			pAdapter->Release();
+			pAdapter = nullptr;
+
+			break;
+		}
+	}
+
+	if (pAdapter)
+		pAdapter->Release();
+	pFactory->Release();
+#else
+	// Credits to neofetch for the following (modified) script
+	std::string gpu_script = R"gpu_script(
+	lspci -mm |
+	awk -F '\"|\" \"|\\(' \
+	'/"Display|"3D|"VGA/ {
+		a[$0] = $1 "" $3 " " ($(NF-1) ~ /^$|^Device [[:xdigit:]]+$/ ? $4 : $(NF-1))
+	}
+	END { for (i in a) {
+	if (!seen[a[i]]++) {
+		sub("^[^ ]+ ", "", a[i]);
+		print a[i]
+	}
+	}}'
+	)gpu_script";
+
+	FILE* f = popen(gpu_script.c_str(), "r");
+	if (f)
+	{
+		char buffer[1024];
+		while (fgets(buffer, sizeof(buffer), f))
+		{
+			std::string card(buffer);
+			std::string version = "Unknown\n";
+			if (card.find("NVIDIA") != std::string::npos)
+			{
+				// Assumes that all NVIDIA cards use the same driver
+				FILE* fnsmi = popen("nvidia-smi --query-gpu=driver_version --format=csv,noheader", "r");
+				if (fnsmi)
+				{
+					if (fgets(buffer, sizeof(buffer), fnsmi))
+					{
+						version = std::string(buffer);
+					}
+					pclose(fnsmi);
+				}
+			}
+			else
+			{
+				// Assuming non-NVIDIA cards are using the mesa driver
+				FILE* fglxinfo = popen("glxinfo | sed -n 's/OpenGL version string:/OGL/p'", "r");
+				if (fglxinfo)
+				{
+					if (fgets(buffer, sizeof(buffer), fglxinfo))
+					{
+						version = std::string(buffer);
+
+						// This path is taken if the card was Intel or AMD
+						// If glxinfo is reporting NVIDIA, then it's likely that this is a multi-gpu system
+						// and that this version doesn't apply to this AMD / Intel device
+						// Alternatively we could use vulkaninfo, which allows us to select the device
+						// But I was unable to get that to work on my system
+						// So for now, we cannot get the iGPU version on NVIDIA dGPU systems
+						if (version.find("NVIDIA") != std::string::npos)
+						{
+							version = "Unknown (OpenGL default is NVIDIA)\n";
+						}
+					}
+					pclose(fglxinfo);
+				}
+			}
+			Console.WriteLnFmt(
+				"  GPU              = {}"
+				"  Driver  Version  = {}",
+				card, version);
+		}
+		pclose(f);
+	}
+#endif
+}
+#endif
+#endif
 
 void VMManager::LogCPUCapabilities()
 {
@@ -2254,7 +2466,9 @@ void VMManager::LogCPUCapabilities()
 	Console.WriteLnFmt("  Processor        = {}", cpuinfo_get_package(0)->name);
 	Console.WriteLnFmt("  Core Count       = {} cores", cpuinfo_get_cores_count());
 	Console.WriteLnFmt("  Thread Count     = {} threads", cpuinfo_get_processors_count());
-	Console.WriteLn();
+#ifdef _WIN32
+	LogUserPowerPlan();
+#endif
 
 	std::string features;
 	if (cpuinfo_has_x86_avx())
@@ -2267,6 +2481,10 @@ void VMManager::LogCPUCapabilities()
 	Console.WriteLn(Color_StrongBlack, "x86 Features Detected:");
 	Console.WriteLnFmt("  {}", features);
 	Console.WriteLn();
+
+#if 0
+	LogGPUCapabilities();
+#endif
 }
 
 
@@ -2372,13 +2590,13 @@ void VMManager::SetPaused(bool paused)
 	SetState(paused ? VMState::Paused : VMState::Running);
 }
 
-VsyncMode Host::GetEffectiveVSyncMode()
+bool Host::IsVsyncEffectivelyEnabled()
 {
 	const bool has_vm = VMManager::GetState() != VMState::Shutdown;
 
 	// Force vsync off when not running at 100% speed.
 	if (has_vm && (s_target_speed != 1.0f && !s_use_vsync_for_timing))
-		return VsyncMode::Off;
+		return false;
 
 	// Otherwise use the config setting.
 	return EmuConfig.GS.VsyncEnable;
@@ -2446,7 +2664,7 @@ void VMManager::Internal::EntryPointCompilingOnCPUThread()
 	const bool reset_speed_limiter = (EmuConfig.EnableFastBootFastForward && IsFastBootInProgress());
 
 	Console.WriteLn(
-		Color_StrongGreen, fmt::format("ELF {} with entry point at 0x{} is executing.", s_elf_path, s_elf_entry_point));
+		Color_StrongGreen, fmt::format("ELF {} with entry point at 0x{:08X} is executing.", s_elf_path, s_elf_entry_point));
 	s_elf_executed = true;
 
 	if (reset_speed_limiter)
@@ -2567,6 +2785,7 @@ void VMManager::CheckForGSConfigChanges(const Pcsx2Config& old_config)
 	{
 		// Still need to update target speed, because of sync-to-host-refresh.
 		UpdateTargetSpeed();
+		MTGS::UpdateVSyncEnabled();
 	}
 
 	MTGS::ApplySettings();
@@ -2756,9 +2975,6 @@ void VMManager::EnforceAchievementsChallengeModeSettings()
 	EmuConfig.Speedhacks.EECycleRate =
 		std::max<decltype(EmuConfig.Speedhacks.EECycleRate)>(EmuConfig.Speedhacks.EECycleRate, 0);
 	EmuConfig.Speedhacks.EECycleSkip = 0;
-
-	// Async mix breaks games.
-	EmuConfig.SPU2.SynchMode = Pcsx2Config::SPU2Options::SynchronizationMode::TimeStretch;
 }
 
 void VMManager::LogUnsafeSettingsToConsole(const std::string& messages)
@@ -2787,7 +3003,7 @@ void VMManager::WarnAboutUnsafeSettings()
 		return;
 
 	std::string messages;
-	auto append = [&messages](const char* icon, const std::string_view& msg) {
+	auto append = [&messages](const char* icon, const std::string_view msg) {
 		messages += icon;
 		messages += ' ';
 		messages += msg;
@@ -2800,11 +3016,6 @@ void VMManager::WarnAboutUnsafeSettings()
 	{
 		append(ICON_FA_TACHOMETER_ALT,
 			TRANSLATE_SV("VMManager", "Cycle rate/skip is not at default, this may crash or make games run too slow."));
-	}
-	if (EmuConfig.SPU2.SynchMode == Pcsx2Config::SPU2Options::SynchronizationMode::ASync)
-	{
-		append(ICON_FA_VOLUME_MUTE,
-			TRANSLATE_SV("VMManager", "Audio is using async mix, expect desynchronization in FMVs."));
 	}
 	if (EmuConfig.GS.UpscaleMultiplier < 1.0f)
 		append(ICON_FA_TV, TRANSLATE_SV("VMManager", "Upscale multiplier is below native, this will break rendering."));
@@ -2827,8 +3038,8 @@ void VMManager::WarnAboutUnsafeSettings()
 	}
 	if (EmuConfig.GS.AccurateBlendingUnit <= AccBlendLevel::Minimum)
 	{
-		append(ICON_FA_BLENDER,
-			TRANSLATE_SV("VMManager", "Blending is below basic, this may break effects in some games."));
+		append(ICON_FA_PAINT_BRUSH,
+			TRANSLATE_SV("VMManager", "Blending Accuracy is below Basic, this may break effects in some games."));
 	}
 	if (EmuConfig.GS.HWDownloadMode != GSHardwareDownloadMode::Enabled)
 	{
@@ -2838,31 +3049,36 @@ void VMManager::WarnAboutUnsafeSettings()
 	}
 	if (EmuConfig.Cpu.FPUFPCR.GetRoundMode() != FPRoundMode::ChopZero)
 	{
-		append(ICON_FA_MICROCHIP,
+		append(ICON_PF_MICROCHIP,
 			TRANSLATE_SV("VMManager", "EE FPU Round Mode is not set to default, this may break some games."));
 	}
 	if (!EmuConfig.Cpu.Recompiler.fpuOverflow || EmuConfig.Cpu.Recompiler.fpuExtraOverflow ||
 		EmuConfig.Cpu.Recompiler.fpuFullMode)
 	{
-		append(ICON_FA_MICROCHIP,
+		append(ICON_PF_MICROCHIP,
 			TRANSLATE_SV("VMManager", "EE FPU Clamp Mode is not set to default, this may break some games."));
 	}
 	if (EmuConfig.Cpu.VU0FPCR.GetRoundMode() != FPRoundMode::ChopZero)
 	{
-		append(ICON_FA_MICROCHIP,
+		append(ICON_PF_MICROCHIP,
 			TRANSLATE_SV("VMManager", "VU0 Round Mode is not set to default, this may break some games."));
 	}
 	if (EmuConfig.Cpu.VU1FPCR.GetRoundMode() != FPRoundMode::ChopZero)
 	{
-		append(ICON_FA_MICROCHIP,
+		append(ICON_PF_MICROCHIP,
 			TRANSLATE_SV("VMManager", "VU1 Round Mode is not set to default, this may break some games."));
 	}
 	if (!EmuConfig.Cpu.Recompiler.vu0Overflow || EmuConfig.Cpu.Recompiler.vu0ExtraOverflow ||
 		EmuConfig.Cpu.Recompiler.vu0SignOverflow || !EmuConfig.Cpu.Recompiler.vu1Overflow ||
 		EmuConfig.Cpu.Recompiler.vu1ExtraOverflow || EmuConfig.Cpu.Recompiler.vu1SignOverflow)
 	{
-		append(ICON_FA_MICROCHIP,
+		append(ICON_PF_MICROCHIP,
 			TRANSLATE_SV("VMManager", "VU Clamp Mode is not set to default, this may break some games."));
+	}
+	if (EmuConfig.Cpu.ExtraMemory)
+	{
+		append(ICON_PF_MICROCHIP,
+			TRANSLATE_SV("VMManager", "128MB RAM is enabled. Compatibility with some games may be affected."));
 	}
 	if (!EmuConfig.EnableGameFixes)
 	{
@@ -2953,6 +3169,11 @@ void VMManager::WarnAboutUnsafeSettings()
 	{
 		append(ICON_FA_EXCLAMATION_CIRCLE,
 			TRANSLATE_SV("VMManager", "Estimate texture region is enabled, this may reduce performance."));
+	}
+	if (EmuConfig.GS.DumpReplaceableTextures)
+	{
+		append(ICON_FA_EXCLAMATION_CIRCLE,
+			TRANSLATE_SV("VMManager", "Texture dumping is enabled, this will continually dump textures to disk."));
 	}
 
 	if (!messages.empty())

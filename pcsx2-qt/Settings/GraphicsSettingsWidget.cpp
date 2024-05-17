@@ -135,7 +135,7 @@ GraphicsSettingsWidget::GraphicsSettingsWidget(SettingsWindow* dialog, QWidget* 
 	SettingWidgetBinder::BindWidgetToIntSetting(sif, m_ui.casMode, "EmuCore/GS", "CASMode", static_cast<int>(GSCASMode::Disabled));
 	SettingWidgetBinder::BindWidgetToIntSetting(sif, m_ui.casSharpness, "EmuCore/GS", "CASSharpness", DEFAULT_CAS_SHARPNESS);
 
-	connect(m_ui.shadeBoost, QOverload<int>::of(&QCheckBox::stateChanged), this, &GraphicsSettingsWidget::onShadeBoostChanged);
+	connect(m_ui.shadeBoost, &QCheckBox::checkStateChanged, this, &GraphicsSettingsWidget::onShadeBoostChanged);
 	onShadeBoostChanged();
 
 	//////////////////////////////////////////////////////////////////////////
@@ -188,8 +188,7 @@ GraphicsSettingsWidget::GraphicsSettingsWidget(SettingsWindow* dialog, QWidget* 
 	SettingWidgetBinder::BindWidgetToBoolSetting(sif, m_ui.gpuPaletteConversion, "EmuCore/GS", "paltex", false);
 	connect(m_ui.cpuSpriteRenderBW, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
 		&GraphicsSettingsWidget::onCPUSpriteRenderBWChanged);
-	connect(m_ui.gpuPaletteConversion, QOverload<int>::of(&QCheckBox::stateChanged), this,
-		&GraphicsSettingsWidget::onGpuPaletteConversionChanged);
+	connect(m_ui.gpuPaletteConversion, &QCheckBox::checkStateChanged, this, &GraphicsSettingsWidget::onGpuPaletteConversionChanged);
 	onCPUSpriteRenderBWChanged();
 	onGpuPaletteConversionChanged(m_ui.gpuPaletteConversion->checkState());
 
@@ -230,7 +229,6 @@ GraphicsSettingsWidget::GraphicsSettingsWidget(SettingsWindow* dialog, QWidget* 
 	SettingWidgetBinder::BindWidgetToIntSetting(
 		sif, m_ui.gsDumpCompression, "EmuCore/GS", "GSDumpCompression", static_cast<int>(GSDumpCompressionMethod::Zstandard));
 	SettingWidgetBinder::BindWidgetToBoolSetting(sif, m_ui.disableFramebufferFetch, "EmuCore/GS", "DisableFramebufferFetch", false);
-	SettingWidgetBinder::BindWidgetToBoolSetting(sif, m_ui.disableDualSource, "EmuCore/GS", "DisableDualSourceBlend", false);
 	SettingWidgetBinder::BindWidgetToBoolSetting(sif, m_ui.disableShaderCache, "EmuCore/GS", "DisableShaderCache", false);
 	SettingWidgetBinder::BindWidgetToBoolSetting(sif, m_ui.disableVertexShaderExpand, "EmuCore/GS", "DisableVertexShaderExpand", false);
 	SettingWidgetBinder::BindWidgetToIntSetting(
@@ -274,7 +272,7 @@ GraphicsSettingsWidget::GraphicsSettingsWidget(SettingsWindow* dialog, QWidget* 
 	}
 
 	connect(m_ui.renderer, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &GraphicsSettingsWidget::onRendererChanged);
-	connect(m_ui.enableHWFixes, &QCheckBox::stateChanged, this, &GraphicsSettingsWidget::updateRendererDependentOptions);
+	connect(m_ui.enableHWFixes, &QCheckBox::checkStateChanged, this, &GraphicsSettingsWidget::updateRendererDependentOptions);
 	connect(m_ui.textureFiltering, &QComboBox::currentIndexChanged, this, &GraphicsSettingsWidget::onTextureFilteringChange);
 	connect(m_ui.swTextureFiltering, &QComboBox::currentIndexChanged, this, &GraphicsSettingsWidget::onSWTextureFilteringChange);
 	updateRendererDependentOptions();
@@ -334,7 +332,6 @@ GraphicsSettingsWidget::GraphicsSettingsWidget(SettingsWindow* dialog, QWidget* 
 		m_ui.skipPresentingDuplicateFrames = nullptr;
 		m_ui.threadedPresentation = nullptr;
 		m_ui.overrideTextureBarriers = nullptr;
-		m_ui.disableDualSource = nullptr;
 		m_ui.disableFramebufferFetch = nullptr;
 		m_ui.disableShaderCache = nullptr;
 		m_ui.disableVertexShaderExpand = nullptr;
@@ -368,10 +365,10 @@ GraphicsSettingsWidget::GraphicsSettingsWidget(SettingsWindow* dialog, QWidget* 
 		SettingWidgetBinder::BindWidgetToBoolSetting(
 			sif, m_ui.enableVideoCaptureArguments, "EmuCore/GS", "EnableVideoCaptureParameters", false);
 		SettingWidgetBinder::BindWidgetToStringSetting(sif, m_ui.videoCaptureArguments, "EmuCore/GS", "VideoCaptureParameters");
-		connect(m_ui.enableVideoCapture, &QCheckBox::stateChanged, this, &GraphicsSettingsWidget::onEnableVideoCaptureChanged);
+		connect(m_ui.enableVideoCapture, &QCheckBox::checkStateChanged, this, &GraphicsSettingsWidget::onEnableVideoCaptureChanged);
 		connect(
-			m_ui.videoCaptureResolutionAuto, &QCheckBox::stateChanged, this, &GraphicsSettingsWidget::onVideoCaptureAutoResolutionChanged);
-		connect(m_ui.enableVideoCaptureArguments, &QCheckBox::stateChanged, this,
+			m_ui.videoCaptureResolutionAuto, &QCheckBox::checkStateChanged, this, &GraphicsSettingsWidget::onVideoCaptureAutoResolutionChanged);
+		connect(m_ui.enableVideoCaptureArguments, &QCheckBox::checkStateChanged, this,
 			&GraphicsSettingsWidget::onEnableVideoCaptureArgumentsChanged);
 
 		SettingWidgetBinder::BindWidgetToBoolSetting(sif, m_ui.enableAudioCapture, "EmuCore/GS", "EnableAudioCapture", true);
@@ -380,8 +377,8 @@ GraphicsSettingsWidget::GraphicsSettingsWidget(SettingsWindow* dialog, QWidget* 
 		SettingWidgetBinder::BindWidgetToBoolSetting(
 			sif, m_ui.enableAudioCaptureArguments, "EmuCore/GS", "EnableAudioCaptureParameters", false);
 		SettingWidgetBinder::BindWidgetToStringSetting(sif, m_ui.audioCaptureArguments, "EmuCore/GS", "AudioCaptureParameters");
-		connect(m_ui.enableAudioCapture, &QCheckBox::stateChanged, this, &GraphicsSettingsWidget::onEnableAudioCaptureChanged);
-		connect(m_ui.enableAudioCaptureArguments, &QCheckBox::stateChanged, this,
+		connect(m_ui.enableAudioCapture, &QCheckBox::checkStateChanged, this, &GraphicsSettingsWidget::onEnableAudioCaptureChanged);
+		connect(m_ui.enableAudioCaptureArguments, &QCheckBox::checkStateChanged, this,
 			&GraphicsSettingsWidget::onEnableAudioCaptureArgumentsChanged);
 
 		onCaptureContainerChanged();
@@ -522,9 +519,7 @@ GraphicsSettingsWidget::GraphicsSettingsWidget(SettingsWindow* dialog, QWidget* 
 		// Software
 		dialog->registerWidgetHelp(m_ui.extraSWThreads, tr("Software Rendering Threads"), tr("2 threads"),
 			tr("Number of rendering threads: 0 for single thread, 2 or more for multithread (1 is for debugging). "
-			   "If you have 4 threads on your CPU pick 2 or 3. You can calculate how to get the best performance (amount of CPU threads - "
-			   "2). "
-			   "7+ threads will not give much more performance and could perhaps even lower it."));
+			   "2 to 4 threads is recommended, any more than that is likely to be slower instead of faster."));
 
 		dialog->registerWidgetHelp(m_ui.swAutoFlush, tr("Auto Flush"), tr("Checked"),
 			tr("Force a primitive flush when a framebuffer is also an input texture. "
@@ -960,6 +955,7 @@ void GraphicsSettingsWidget::updateRendererDependentOptions()
 	const bool is_software = (type == GSRendererType::SW);
 	const bool is_auto = (type == GSRendererType::Auto);
 	const bool is_vk = (type == GSRendererType::VK);
+	const bool is_disable_barriers = (type == GSRendererType::DX11 || type == GSRendererType::DX12 || type == GSRendererType::Metal || type == GSRendererType::SW);
 	const bool hw_fixes = (is_hardware && m_ui.enableHWFixes && m_ui.enableHWFixes->checkState() == Qt::Checked);
 	const int prev_tab = m_ui.tabs->currentIndex();
 
@@ -993,7 +989,7 @@ void GraphicsSettingsWidget::updateRendererDependentOptions()
 		m_ui.useBlitSwapChain->setEnabled(is_dx11);
 
 	if (m_ui.overrideTextureBarriers)
-		m_ui.overrideTextureBarriers->setDisabled(is_sw_dx);
+		m_ui.overrideTextureBarriers->setDisabled(is_disable_barriers);
 
 	if (m_ui.disableFramebufferFetch)
 		m_ui.disableFramebufferFetch->setDisabled(is_sw_dx);

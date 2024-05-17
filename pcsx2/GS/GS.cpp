@@ -58,21 +58,6 @@ static GSRendererType GSCurrentRenderer;
 
 static u64 s_next_manual_present_time;
 
-void GSinit()
-{
-	GSVertexSW::InitStatic();
-
-	GSUtil::Init();
-}
-
-void GSshutdown()
-{
-	GSclose();
-
-	// ensure all screenshots have been saved
-	GSJoinSnapshotThreads();
-}
-
 GSRendererType GSGetCurrentRenderer()
 {
 	return GSCurrentRenderer;
@@ -192,6 +177,8 @@ static bool OpenGSRenderer(GSRendererType renderer, u8* basemem)
 	// Must be done first, initialization routines in GSState use GSIsHardwareRenderer().
 	GSCurrentRenderer = renderer;
 
+	GSVertexSW::InitStatic();
+
 	if (renderer == GSRendererType::Null)
 	{
 		g_gs_renderer = std::make_unique<GSRendererNull>();
@@ -223,14 +210,24 @@ static void CloseGSRenderer()
 	}
 }
 
-bool GSreopen(bool recreate_device, GSRendererType new_renderer, std::optional<const Pcsx2Config::GSOptions*> old_config)
+bool GSreopen(bool recreate_device, bool recreate_renderer, GSRendererType new_renderer,
+	std::optional<const Pcsx2Config::GSOptions*> old_config)
 {
 	Console.WriteLn("Reopening GS with %s device", recreate_device ? "new" : "existing");
 
 	g_gs_renderer->Flush(GSState::GSFlushReason::GSREOPEN);
 
-	if (GSConfig.UserHacks_ReadTCOnClose)
+	if (recreate_device && !recreate_renderer)
+	{
+		// Keeping the renderer around, this probably means we lost the device, so toss everything.
+		g_gs_renderer->PurgeTextureCache(true, true, true);
+		g_gs_device->ClearCurrent();
+		g_gs_device->PurgePool();
+	}
+	else if (GSConfig.UserHacks_ReadTCOnClose)
+	{
 		g_gs_renderer->ReadbackTextureCache();
+	}
 
 	std::string capture_filename;
 	GSVector2i capture_size;
@@ -245,21 +242,25 @@ bool GSreopen(bool recreate_device, GSRendererType new_renderer, std::optional<c
 	u8* basemem = g_gs_renderer->GetRegsMem();
 
 	freezeData fd = {};
-	if (g_gs_renderer->Freeze(&fd, true) != 0)
+	std::unique_ptr<u8[]> fd_data;
+	if (recreate_renderer)
 	{
-		Console.Error("(GSreopen) Failed to get GS freeze size");
-		return false;
-	}
+		if (g_gs_renderer->Freeze(&fd, true) != 0)
+		{
+			Console.Error("(GSreopen) Failed to get GS freeze size");
+			return false;
+		}
 
-	std::unique_ptr<u8[]> fd_data = std::make_unique<u8[]>(fd.size);
-	fd.data = fd_data.get();
-	if (g_gs_renderer->Freeze(&fd, false) != 0)
-	{
-		Console.Error("(GSreopen) Failed to freeze GS");
-		return false;
-	}
+		fd_data = std::make_unique<u8[]>(fd.size);
+		fd.data = fd_data.get();
+		if (g_gs_renderer->Freeze(&fd, false) != 0)
+		{
+			Console.Error("(GSreopen) Failed to freeze GS");
+			return false;
+		}
 
-	CloseGSRenderer();
+		CloseGSRenderer();
+	}
 
 	if (recreate_device)
 	{
@@ -287,16 +288,19 @@ bool GSreopen(bool recreate_device, GSRendererType new_renderer, std::optional<c
 		}
 	}
 
-	if (!OpenGSRenderer(new_renderer, basemem))
+	if (recreate_renderer)
 	{
-		Console.Error("(GSreopen) Failed to create new renderer");
-		return false;
-	}
+		if (!OpenGSRenderer(new_renderer, basemem))
+		{
+			Console.Error("(GSreopen) Failed to create new renderer");
+			return false;
+		}
 
-	if (g_gs_renderer->Defrost(&fd) != 0)
-	{
-		Console.Error("(GSreopen) Failed to defrost");
-		return false;
+		if (g_gs_renderer->Defrost(&fd) != 0)
+		{
+			Console.Error("(GSreopen) Failed to defrost");
+			return false;
+		}
 	}
 
 	if (!capture_filename.empty())
@@ -323,8 +327,8 @@ bool GSopen(const Pcsx2Config::GSOptions& config, GSRendererType renderer, u8* b
 	if (!res)
 	{
 		Host::ReportErrorAsync(
-			"Error", fmt::format("Failed to create render device. This may be due to your GPU not supporting the "
-								 "chosen renderer ({}), or because your graphics drivers need to be updated.",
+			"Error", fmt::format(TRANSLATE_FS("GS","Failed to create render device. This may be due to your GPU not supporting the "
+								 "chosen renderer ({}), or because your graphics drivers need to be updated."),
 						 Pcsx2Config::GSOptions::GetRendererName(GSConfig.Renderer)));
 		return false;
 	}
@@ -467,7 +471,7 @@ void GSPresentCurrentFrame()
 
 void GSThrottlePresentation()
 {
-	if (g_gs_device->GetVsyncMode() != VsyncMode::Off)
+	if (g_gs_device->IsVSyncEnabled())
 	{
 		// Let vsync take care of throttling.
 		return;
@@ -524,9 +528,9 @@ void GSUpdateDisplayWindow()
 	ImGuiManager::WindowResized();
 }
 
-void GSSetVSyncMode(VsyncMode mode)
+void GSSetVSyncEnabled(bool enabled)
 {
-	g_gs_device->SetVSync(mode);
+	g_gs_device->SetVSyncEnabled(enabled);
 }
 
 bool GSWantsExclusiveFullscreen()
@@ -620,7 +624,7 @@ void GSgetStats(SmallStringBase& info)
 	{
 		const double fps = GetVerticalFrequency();
 		const double fillrate = pm.Get(GSPerfMon::Fillrate);
-		info.fmt("{} SW | {} S | {} P | {} D | {:.2f} U | {:.2f} D | {:.2f} mpps",
+		info.format("{} SW | {} S | {} P | {} D | {:.2f} U | {:.2f} D | {:.2f} mpps",
 			api_name,
 			(int)pm.Get(GSPerfMon::SyncPoint),
 			(int)pm.Get(GSPerfMon::Prim),
@@ -635,7 +639,7 @@ void GSgetStats(SmallStringBase& info)
 	}
 	else
 	{
-		info.fmt("{} HW | {} P | {} D | {} DC | {} B | {} RP | {} RB | {} TC | {} TU",
+		info.format("{} HW | {} P | {} D | {} DC | {} B | {} RP | {} RB | {} TC | {} TU",
 			api_name,
 			(int)pm.Get(GSPerfMon::Prim),
 			(int)pm.Get(GSPerfMon::Draw),
@@ -701,12 +705,12 @@ void GSUpdateConfig(const Pcsx2Config::GSOptions& new_config)
 
 	// Handle OSD scale changes by pushing a window resize through.
 	if (new_config.OsdScale != old_config.OsdScale)
-		ImGuiManager::WindowResized();
+		ImGuiManager::RequestScaleUpdate();
 
 	// Options which need a full teardown/recreate.
 	if (!GSConfig.RestartOptionsAreEqual(old_config))
 	{
-		if (!GSreopen(true, GSConfig.Renderer, &old_config))
+		if (!GSreopen(true, true, GSConfig.Renderer, &old_config))
 			pxFailRel("Failed to do full GS reopen");
 		return;
 	}
@@ -715,7 +719,7 @@ void GSUpdateConfig(const Pcsx2Config::GSOptions& new_config)
 	if (GSConfig.SWExtraThreads != old_config.SWExtraThreads ||
 		GSConfig.SWExtraThreadsHeight != old_config.SWExtraThreadsHeight)
 	{
-		if (!GSreopen(false, GSConfig.Renderer, &old_config))
+		if (!GSreopen(false, true, GSConfig.Renderer, &old_config))
 			pxFailRel("Failed to do quick GS reopen");
 
 		return;
@@ -751,7 +755,8 @@ void GSUpdateConfig(const Pcsx2Config::GSOptions& new_config)
 		if (GSConfig.UserHacks_ReadTCOnClose)
 			g_gs_renderer->ReadbackTextureCache();
 		g_gs_renderer->PurgeTextureCache(true, true, true);
-		g_gs_renderer->PurgePool();
+		g_gs_device->ClearCurrent();
+		g_gs_device->PurgePool();
 	}
 
 	// clear out the sampler cache when AF options change, since the anisotropy gets baked into them
@@ -789,7 +794,7 @@ void GSSetSoftwareRendering(bool software_renderer, GSInterlaceMode new_interlac
 		// Config might be SW, and we're switching to HW -> use Auto.
 		const GSRendererType renderer = (software_renderer ? GSRendererType::SW :
 			(GSConfig.Renderer == GSRendererType::SW ? GSRendererType::Auto : GSConfig.Renderer));
-		if (!GSreopen(false, renderer, std::nullopt))
+		if (!GSreopen(false, true, renderer, std::nullopt))
 			pxFailRel("Failed to reopen GS for renderer switch.");
 	}
 }
@@ -953,12 +958,13 @@ std::pair<u8, u8> GSGetRGBA8AlphaMinMax(const void* data, u32 width, u32 height,
 	{
 		const u32 aligned_width = Common::AlignDownPow2(width, 4);
 		static constexpr const GSVector4i masks[3][2] = {
-			{GSVector4i::cxpr(0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0), GSVector4i::cxpr(0, 0, 0, 0xFFFFFFFF)},
-			{GSVector4i::cxpr(0xFFFFFFFF, 0xFFFFFFFF, 0, 0), GSVector4i::cxpr(0, 0, 0xFFFFFFFF, 0xFFFFFFFF)},
 			{GSVector4i::cxpr(0xFFFFFFFF, 0, 0, 0), GSVector4i::cxpr(0, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF)},
+			{GSVector4i::cxpr(0xFFFFFFFF, 0xFFFFFFFF, 0, 0), GSVector4i::cxpr(0, 0, 0xFFFFFFFF, 0xFFFFFFFF)},
+			{GSVector4i::cxpr(0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0), GSVector4i::cxpr(0, 0, 0, 0xFFFFFFFF)},
 		};
-		const GSVector4i last_mask_and = masks[(width & 3) - 1][0];
-		const GSVector4i last_mask_or = masks[(width & 3) - 1][1];
+		const u32 unaligned_pixels = width & 3;
+		const GSVector4i last_mask_and = masks[unaligned_pixels - 1][0];
+		const GSVector4i last_mask_or = masks[unaligned_pixels - 1][1];
 
 		for (u32 r = 0; r < height; r++)
 		{
@@ -971,7 +977,24 @@ std::pair<u8, u8> GSGetRGBA8AlphaMinMax(const void* data, u32 width, u32 height,
 				maxc = maxc.max_u32(v);
 			}
 
-			const GSVector4i v = GSVector4i::load<false>(rptr);
+			GSVector4i v;
+			u32 vu;
+			if (unaligned_pixels == 3)
+			{
+				v = GSVector4i::loadl(rptr);
+				std::memcpy(&vu, rptr + sizeof(u32) * 2, sizeof(vu));
+				v = v.insert32<2>(vu);
+			}
+			else if (unaligned_pixels == 2)
+			{
+				v = GSVector4i::loadl(rptr);
+			}
+			else
+			{
+				std::memcpy(&vu, rptr, sizeof(vu));
+				v = GSVector4i::load(vu);
+			}
+
 			minc = minc.min_u32(v | last_mask_or);
 			maxc = maxc.max_u32(v & last_mask_and);
 
@@ -1110,7 +1133,7 @@ BEGIN_HOTKEY_LIST(g_gs_hotkeys){"Screenshot", TRANSLATE_NOOP("Hotkeys", "Graphic
 			MTGS::RunOnGSThread([new_level]() {
 				GSConfig.HWMipmap = new_level;
 				g_gs_renderer->PurgeTextureCache(true, false, true);
-				g_gs_renderer->PurgePool();
+				g_gs_device->PurgePool();
 			});
 		}},
 	{"CycleInterlaceMode", TRANSLATE_NOOP("Hotkeys", "Graphics"), TRANSLATE_NOOP("Hotkeys", "Cycle Deinterlace Mode"),

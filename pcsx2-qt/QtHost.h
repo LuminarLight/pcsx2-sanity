@@ -61,7 +61,7 @@ public:
 	__fi bool isExclusiveFullscreen() const { return m_is_exclusive_fullscreen; }
 	__fi bool isRenderingToMain() const { return m_is_rendering_to_main; }
 	__fi bool isSurfaceless() const { return m_is_surfaceless; }
-	__fi bool isRunningFullscreenUI() const { return m_run_fullscreen_ui; }
+	__fi bool isRunningFullscreenUI() const { return m_run_fullscreen_ui.load(std::memory_order_acquire); }
 
 	__fi bool isOnEmuThread() const { return (QThread::currentThread() == this); }
 	__fi bool isOnUIThread() const { return (QThread::currentThread() == m_ui_thread); }
@@ -112,9 +112,12 @@ public Q_SLOTS:
 	void queueSnapshot(quint32 gsdump_frames);
 	void beginCapture(const QString& path);
 	void endCapture();
+	void setAudioOutputVolume(int volume, int fast_forward_volume);
+	void setAudioOutputMuted(bool muted);
 
 Q_SIGNALS:
 	bool messageConfirmed(const QString& title, const QString& message);
+	void statusMessage(const QString& message);
 
 	std::optional<WindowInfo> onAcquireRenderWindowRequested(bool recreate_window, bool fullscreen, bool render_to_main, bool surfaceless);
 	void onResizeRenderWindowRequested(qint32 width, qint32 height);
@@ -158,9 +161,6 @@ Q_SIGNALS:
 
 	/// Called when achievements login is requested.
 	void onAchievementsLoginRequested(Achievements::LoginRequestReason reason);
-
-	/// Called when achievements login succeeds. Also happens on startup.
-	void onAchievementsLoginSucceeded(const QString& display_name, quint32 points, quint32 sc_points, quint32 unread_messages);
 
 	/// Called when achievements are reloaded/refreshed (e.g. game change, login, option change).
 	void onAchievementsRefreshed(quint32 id, const QString& game_info_string);
@@ -206,9 +206,9 @@ private:
 	QTimer* m_background_controller_polling_timer = nullptr;
 
 	std::atomic_bool m_shutdown_flag{false};
+	std::atomic_bool m_run_fullscreen_ui{false};
 
 	bool m_verbose_status = false;
-	bool m_run_fullscreen_ui = false;
 	bool m_is_rendering_to_main = false;
 	bool m_is_fullscreen = false;
 	bool m_is_exclusive_fullscreen = false;
@@ -223,7 +223,7 @@ private:
 	float m_last_video_fps = 0.0f;
 	int m_last_internal_width = 0;
 	int m_last_internal_height = 0;
-	GSRendererType m_last_renderer = GSRendererType::Null;
+	GSRendererType m_last_renderer = GSRendererType::Auto;
 };
 
 extern EmuThread* g_emu_thread;
@@ -280,6 +280,9 @@ namespace QtHost
 
 	/// Returns the URL to a runtime-downloaded resource.
 	std::string GetRuntimeDownloadedResourceURL(std::string_view name);
+
+	/// Saves a game settings interface.
+	bool SaveGameSettings(SettingsInterface* sif, bool delete_if_empty);
 
 	/// Downloads the specified URL to the provided path.
 	bool DownloadFile(QWidget* parent, const QString& title, std::string url, const std::string& path);

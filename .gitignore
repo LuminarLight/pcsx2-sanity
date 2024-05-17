@@ -91,6 +91,7 @@ oprofile_data/
 /bin/inputprofiles
 /bin/videos
 /bin/portable.ini
+/bin/portable.txt
 
 # Manually added by user.
 /bin/resources/patches.zip
@@ -101,6 +102,7 @@ oprofile_data/
 /bin/resources/fonts/NotoSansSC-Regular.ttf
 /bin/resources/fonts/NotoSansTC-Regular.ttf
 
+/deps-build
 /deps
 /ipch
 

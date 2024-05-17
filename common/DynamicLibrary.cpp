@@ -1,9 +1,13 @@
-// SPDX-FileCopyrightText: 2002-2023 PCSX2 Dev Team
+// SPDX-FileCopyrightText: 2002-2024 PCSX2 Dev Team
 // SPDX-License-Identifier: LGPL-3.0+
 
 #include "common/DynamicLibrary.h"
 #include "common/Assertions.h"
 #include "common/Console.h"
+#include "common/Error.h"
+#include "common/FileSystem.h"
+#include "common/SmallString.h"
+#include "common/Path.h"
 #include "common/StringUtil.h"
 
 #include <cstring>
@@ -13,15 +17,18 @@
 #include "common/RedtapeWindows.h"
 #else
 #include <dlfcn.h>
+#ifdef __APPLE__
+#include "common/CocoaTools.h"
 #endif
-
-using namespace Common;
+#endif
 
 DynamicLibrary::DynamicLibrary() = default;
 
 DynamicLibrary::DynamicLibrary(const char* filename)
 {
-	Open(filename);
+	Error error;
+	if (!Open(filename, &error))
+		Console.ErrorFmt("DynamicLibrary open failed: {}", error.GetDescription());
 }
 
 DynamicLibrary::DynamicLibrary(DynamicLibrary&& move)
@@ -74,13 +81,13 @@ std::string DynamicLibrary::GetVersionedFilename(const char* libname, int major,
 #endif
 }
 
-bool DynamicLibrary::Open(const char* filename)
+bool DynamicLibrary::Open(const char* filename, Error* error)
 {
 #ifdef _WIN32
 	m_handle = reinterpret_cast<void*>(LoadLibraryW(StringUtil::UTF8StringToWideString(filename).c_str()));
 	if (!m_handle)
 	{
-		Console.Error(fmt::format("(DynamicLibrary) Loading {} failed: {}", filename, GetLastError()));
+		Error::SetWin32(error, TinyString::from_format("Loading {} failed: ", filename), GetLastError());
 		return false;
 	}
 
@@ -89,13 +96,43 @@ bool DynamicLibrary::Open(const char* filename)
 	m_handle = dlopen(filename, RTLD_NOW);
 	if (!m_handle)
 	{
+#ifdef __APPLE__
+		// On MacOS, try searching in Frameworks.
+		if (!Path::IsAbsolute(filename))
+		{
+			std::optional<std::string> bundle_path = CocoaTools::GetBundlePath();
+			if (bundle_path.has_value())
+			{
+				std::string frameworks_path = fmt::format("{}/Contents/Frameworks/{}", bundle_path.value(), filename);
+				if (FileSystem::FileExists(frameworks_path.c_str()))
+				{
+					m_handle = dlopen(frameworks_path.c_str(), RTLD_NOW);
+					if (m_handle)
+					{
+						Error::Clear(error);
+						return true;
+					}
+				}
+			}
+		}
+#endif
+
 		const char* err = dlerror();
-		Console.Error(fmt::format("(DynamicLibrary) Loading {} failed: {}", filename, err ? err : ""));
+		Error::SetStringFmt(error, "Loading {} failed: {}", filename, err ? err : "<UNKNOWN>");
 		return false;
 	}
 
 	return true;
 #endif
+}
+
+void DynamicLibrary::Adopt(void* handle)
+{
+	pxAssertRel(handle, "Handle is valid");
+
+	Close();
+
+	m_handle = handle;
 }
 
 void DynamicLibrary::Close()

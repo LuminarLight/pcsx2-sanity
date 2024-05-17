@@ -4,8 +4,11 @@
 #if !defined(_WIN32) && !defined(__APPLE__)
 
 #include "common/Pcsx2Types.h"
+#include "common/Console.h"
 #include "common/HostSys.h"
+#include "common/Path.h"
 #include "common/ScopedGuard.h"
+#include "common/SmallString.h"
 #include "common/StringUtil.h"
 #include "common/Threading.h"
 #include "common/WindowInfo.h"
@@ -49,6 +52,41 @@ u64 GetCPUTicks()
 std::string GetOSVersionString()
 {
 #if defined(__linux__)
+	FILE* file = fopen("/etc/os-release", "r");
+	if (file)
+	{
+		char line[256];
+		std::string distro;
+		std::string version = "";
+		while (fgets(line, sizeof(line), file))
+		{
+			std::string_view line_view(line);
+			if (line_view.starts_with("NAME="))
+			{
+				distro = line_view.substr(5, line_view.size() - 6);
+			}
+			else if (line_view.starts_with("BUILD_ID="))
+			{
+				version = line_view.substr(9, line_view.size() - 10);
+			}
+			else if (line_view.starts_with("VERSION_ID="))
+			{
+				version = line_view.substr(11, line_view.size() - 12);
+			}
+		}
+		fclose(file);
+
+		// Some distros put quotes around the name and or version.
+		if (distro.starts_with("\"") && distro.ends_with("\""))
+			distro = distro.substr(1, distro.size() - 2);
+
+		if (version.starts_with("\"") && version.ends_with("\""))
+					version = version.substr(1, version.size() - 2);
+
+		if (!distro.empty() && !version.empty())
+			return fmt::format("{} {}", distro, version);
+	}
+
 	return "Linux";
 #else // freebsd
 	return "Other Unix";
@@ -138,7 +176,28 @@ bool Common::PlaySoundAsync(const char* path)
 
 	// Since we set SA_NOCLDWAIT in Qt, we don't need to wait here.
 	int res = posix_spawnp(&pid, cmdname, nullptr, nullptr, const_cast<char**>(argv), environ);
-	return (res == 0);
+	if (res == 0)
+		return true;
+
+	// Try gst-play-1.0.
+	const char* gst_play_cmdname = "gst-play-1.0";
+	const char* gst_play_argv[] = {cmdname, path, nullptr};
+	res = posix_spawnp(&pid, gst_play_cmdname, nullptr, nullptr, const_cast<char**>(gst_play_argv), environ);
+	if (res == 0)
+		return true;
+
+	// gst-launch? Bit messier for sure.
+	TinyString location_str = TinyString::from_format("location={}", path);
+	TinyString parse_str = TinyString::from_format("{}parse", Path::GetExtension(path));
+	const char* gst_launch_cmdname = "gst-launch-1.0";
+	const char* gst_launch_argv[] = {
+		gst_launch_cmdname, "filesrc", location_str.c_str(), "!", parse_str.c_str(), "!", "alsasink", nullptr};
+	res = posix_spawnp(&pid, gst_launch_cmdname, nullptr, nullptr, const_cast<char**>(gst_launch_argv), environ);
+	if (res == 0)
+		return true;
+
+	Console.ErrorFmt("Failed to play sound effect {}. Make sure you have aplay, gst-play-1.0, or gst-launch-1.0 available.", path);
+	return false;
 #else
 	return false;
 #endif

@@ -29,43 +29,25 @@ public:
 	using PSSamplerSelector = GSHWDrawConfig::SamplerSelector;
 	using OMDepthStencilSelector = GSHWDrawConfig::DepthStencilSelector;
 
-#pragma pack(push, 1)
-	struct OMBlendSelector
+	union OMBlendSelector
 	{
-		union
+		struct
 		{
-			struct
-			{
-				// Color mask
-				u32 wr : 1;
-				u32 wg : 1;
-				u32 wb : 1;
-				u32 wa : 1;
-				// Alpha blending
-				u32 blend_enable : 1;
-				u32 blend_op : 2;
-				u32 blend_src_factor : 4;
-				u32 blend_dst_factor : 4;
-			};
-
-			struct
-			{
-				// Color mask
-				u32 wrgba : 4;
-			};
-
-			u32 key;
+			GSHWDrawConfig::ColorMaskSelector colormask;
+			u8 pad[3];
+			GSHWDrawConfig::BlendState blend;
 		};
+		u64 key;
 
-		operator u32() { return key & 0x7fff; }
-
-		OMBlendSelector()
-			: key(0)
+		constexpr OMBlendSelector() : key(0) {}
+		constexpr OMBlendSelector(GSHWDrawConfig::ColorMaskSelector colormask_, GSHWDrawConfig::BlendState blend_)
 		{
+			key = 0;
+			colormask = colormask_;
+			blend = blend_;
 		}
 	};
-
-#pragma pack(pop)
+	static_assert(sizeof(OMBlendSelector) == sizeof(u64));
 
 	class ShaderMacro
 	{
@@ -109,6 +91,7 @@ private:
 	};
 
 	void SetFeatures(IDXGIAdapter1* adapter);
+	int GetMaxTextureSize() const;
 
 	bool CreateSwapChain();
 	bool CreateSwapChainRTV();
@@ -143,6 +126,8 @@ private:
 	wil::com_ptr_nothrow<ID3D11Buffer> m_expand_vb;
 	wil::com_ptr_nothrow<ID3D11Buffer> m_expand_ib;
 	wil::com_ptr_nothrow<ID3D11ShaderResourceView> m_expand_vb_srv;
+
+	D3D_FEATURE_LEVEL m_feature_level = D3D_FEATURE_LEVEL_10_0;
 	u32 m_vb_pos = 0; // bytes
 	u32 m_ib_pos = 0; // indices/sizeof(u32)
 	u32 m_structured_vb_pos = 0; // bytes
@@ -154,8 +139,8 @@ private:
 
 	struct
 	{
-		ID3D11InputLayout* layout;
 		D3D11_PRIMITIVE_TOPOLOGY topology;
+		ID3D11InputLayout* layout;
 		ID3D11Buffer* index_buffer;
 		ID3D11VertexShader* vs;
 		ID3D11Buffer* vs_cb;
@@ -227,7 +212,7 @@ private:
 	{
 		wil::com_ptr_nothrow<ID3D11DepthStencilState> dss;
 		wil::com_ptr_nothrow<ID3D11BlendState> bs;
-		wil::com_ptr_nothrow<ID3D11PixelShader> primid_init_ps[2];
+		wil::com_ptr_nothrow<ID3D11PixelShader> primid_init_ps[4];
 	} m_date;
 
 	struct
@@ -255,7 +240,7 @@ private:
 	wil::com_ptr_nothrow<ID3D11Buffer> m_ps_cb;
 	std::unordered_map<u32, wil::com_ptr_nothrow<ID3D11SamplerState>> m_ps_ss;
 	std::unordered_map<u32, wil::com_ptr_nothrow<ID3D11DepthStencilState>> m_om_dss;
-	std::unordered_map<u32, wil::com_ptr_nothrow<ID3D11BlendState>> m_om_bs;
+	std::unordered_map<u64, wil::com_ptr_nothrow<ID3D11BlendState>> m_om_bs;
 	wil::com_ptr_nothrow<ID3D11RasterizerState> m_rs;
 
 	GSHWDrawConfig::VSConstantBuffer m_vs_cb_cache;
@@ -288,7 +273,7 @@ public:
 
 	bool GetHostRefreshRate(float* refresh_rate) override;
 
-	void SetVSync(VsyncMode mode) override;
+	void SetVSyncEnabled(bool enabled) override;
 
 	PresentResult BeginPresent(bool frame_skip) override;
 	void EndPresent() override;
@@ -314,7 +299,7 @@ public:
 
 	void StretchRect(GSTexture* sTex, const GSVector4& sRect, GSTexture* dTex, const GSVector4& dRect, ShaderConvert shader = ShaderConvert::COPY, bool linear = true) override;
 	void StretchRect(GSTexture* sTex, const GSVector4& sRect, GSTexture* dTex, const GSVector4& dRect, ID3D11PixelShader* ps, ID3D11Buffer* ps_cb, bool linear = true);
-	void StretchRect(GSTexture* sTex, const GSVector4& sRect, GSTexture* dTex, const GSVector4& dRect, bool red, bool green, bool blue, bool alpha) override;
+	void StretchRect(GSTexture* sTex, const GSVector4& sRect, GSTexture* dTex, const GSVector4& dRect, bool red, bool green, bool blue, bool alpha, ShaderConvert shader = ShaderConvert::COPY) override;
 	void StretchRect(GSTexture* sTex, const GSVector4& sRect, GSTexture* dTex, const GSVector4& dRect, ID3D11PixelShader* ps, ID3D11Buffer* ps_cb, ID3D11BlendState* bs, bool linear = true);
 	void PresentRect(GSTexture* sTex, const GSVector4& sRect, GSTexture* dTex, const GSVector4& dRect, PresentShader shader, float shaderTime, bool linear) override;
 	void UpdateCLUTTexture(GSTexture* sTex, float sScale, u32 offsetX, u32 offsetY, GSTexture* dTex, u32 dOffset, u32 dSize) override;
@@ -322,7 +307,7 @@ public:
 	void DrawMultiStretchRects(const MultiStretchRect* rects, u32 num_rects, GSTexture* dTex, ShaderConvert shader) override;
 	void DoMultiStretchRects(const MultiStretchRect* rects, u32 num_rects, const GSVector2& ds);
 
-	void SetupDATE(GSTexture* rt, GSTexture* ds, const GSVertexPT1* vertices, bool datm);
+	void SetupDATE(GSTexture* rt, GSTexture* ds, const GSVertexPT1* vertices, SetDATM datm);
 
 	void* IAMapVertexBuffer(u32 stride, u32 count);
 	void IAUnmapVertexBuffer(u32 stride, u32 count);

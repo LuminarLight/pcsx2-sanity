@@ -1,10 +1,13 @@
-// SPDX-FileCopyrightText: 2002-2023 PCSX2 Dev Team
+// SPDX-FileCopyrightText: 2002-2024 PCSX2 Dev Team
 // SPDX-License-Identifier: LGPL-3.0+
 
 #pragma once
 
+#include "Host/AudioStreamTypes.h"
+
 #include "common/Pcsx2Defs.h"
 #include "common/FPControl.h"
+
 #include <array>
 #include <string>
 #include <optional>
@@ -24,6 +27,7 @@
 	} \
 	;
 
+class Error;
 class SettingsInterface;
 class SettingsWrapper;
 
@@ -186,13 +190,6 @@ enum class SpeedHack
 	MaxCount,
 };
 
-enum class VsyncMode
-{
-	Off,
-	On,
-	Adaptive,
-};
-
 enum class AspectRatioType : u8
 {
 	Stretch,
@@ -325,6 +322,7 @@ enum class GSScreenshotFormat : u8
 {
 	PNG,
 	JPEG,
+	WebP,
 	Count,
 };
 
@@ -535,6 +533,11 @@ struct Pcsx2Config
 	// ------------------------------------------------------------------------
 	struct CpuOptions
 	{
+		BITFIELD32()
+		bool
+			ExtraMemory : 1;
+		BITFIELD_END
+
 		RecompilerOptions Recompiler;
 
 		FPControlRegister FPUFPCR;
@@ -586,6 +589,8 @@ struct Pcsx2Config
 			struct
 			{
 				bool
+					SynchronousMTGS : 1,
+					VsyncEnable : 1,
 					PCRTCAntiBlur : 1,
 					DisableInterlaceOffset : 1,
 					PCRTCOffsets : 1,
@@ -594,7 +599,6 @@ struct Pcsx2Config
 					UseDebugDevice : 1,
 					UseBlitSwapChain : 1,
 					DisableShaderCache : 1,
-					DisableDualSourceBlend : 1,
 					DisableFramebufferFetch : 1,
 					DisableVertexShaderExpand : 1,
 					DisableThreadedPresentation : 1,
@@ -609,9 +613,7 @@ struct Pcsx2Config
 					OsdShowIndicators : 1,
 					OsdShowSettings : 1,
 					OsdShowInputs : 1,
-					OsdShowFrameTimes : 1;
-
-				bool
+					OsdShowFrameTimes : 1,
 					HWSpinGPUForReadbacks : 1,
 					HWSpinCPUForReadbacks : 1,
 					GPUPaletteConversion : 1,
@@ -654,12 +656,6 @@ struct Pcsx2Config
 		};
 
 		int VsyncQueueSize = 2;
-
-		// forces the MTGS to execute tags/tasks in fully blocking/synchronous
-		// style. Useful for debugging potential bugs in the MTGS pipeline.
-		bool SynchronousMTGS = false;
-
-		VsyncMode VsyncEnable = VsyncMode::Off;
 
 		float FramerateNTSC = DEFAULT_FRAME_RATE_NTSC;
 		float FrameratePAL = DEFAULT_FRAME_RATE_PAL;
@@ -764,28 +760,22 @@ struct Pcsx2Config
 
 	struct SPU2Options
 	{
-		enum class SynchronizationMode
+		enum class SPU2SyncMode : u8
 		{
+			Disabled,
 			TimeStretch,
-			ASync,
-			NoSync,
+			Count
 		};
 
 		static constexpr s32 MAX_VOLUME = 200;
-		
-		static constexpr s32 MIN_LATENCY = 3;
-		static constexpr s32 MIN_LATENCY_TIMESTRETCH = 15;
-		static constexpr s32 MAX_LATENCY = 750;
+		static constexpr AudioBackend DEFAULT_BACKEND = AudioBackend::Cubeb;
+		static constexpr SPU2SyncMode DEFAULT_SYNC_MODE = SPU2SyncMode::TimeStretch;
 
-		static constexpr s32 MIN_SEQUENCE_LEN = 20;
-		static constexpr s32 MAX_SEQUENCE_LEN = 100;
-		static constexpr s32 MIN_SEEKWINDOW = 10;
-		static constexpr s32 MAX_SEEKWINDOW = 30;
-		static constexpr s32 MIN_OVERLAP = 5;
-		static constexpr s32 MAX_OVERLAP = 15;
+		static std::optional<SPU2SyncMode> ParseSyncMode(const char* str);
+		static const char* GetSyncModeName(SPU2SyncMode backend);
+		static const char* GetSyncModeDisplayName(SPU2SyncMode backend);
 
 		BITFIELD32()
-		bool OutputLatencyMinimal : 1;
 		bool
 			DebugEnabled : 1,
 			MsgToConsole : 1,
@@ -793,7 +783,6 @@ struct Pcsx2Config
 			MsgVoiceOff : 1,
 			MsgDMA : 1,
 			MsgAutoDMA : 1,
-			MsgOverruns : 1,
 			MsgCache : 1,
 			AccessLog : 1,
 			DMALog : 1,
@@ -804,25 +793,22 @@ struct Pcsx2Config
 			VisualDebugEnabled : 1;
 		BITFIELD_END
 
-		SynchronizationMode SynchMode = SynchronizationMode::TimeStretch;
+		u32 OutputVolume = 100;
+		u32 FastForwardVolume = 100;
+		bool OutputMuted = false;
 
-		s32 FinalVolume = 100;
-		s32 Latency = 60;
-		s32 OutputLatency = 20;
-		s32 SpeakerConfiguration = 0;
-		s32 DplDecodingLevel = 0;
+		AudioBackend Backend = DEFAULT_BACKEND;
+		SPU2SyncMode SyncMode = DEFAULT_SYNC_MODE;
+		AudioStreamParameters StreamParameters;
 
-		s32 SequenceLenMS = 30;
-		s32 SeekWindowMS = 20;
-		s32 OverlapMS = 10;
-
-		std::string OutputModule;
-		std::string BackendName;
+		std::string DriverName;
 		std::string DeviceName;
 
 		SPU2Options();
 
 		void LoadSave(SettingsWrapper& wrap);
+
+		bool IsTimeStretchEnabled() const { return (SyncMode == SPU2SyncMode::TimeStretch); }
 
 		bool operator==(const SPU2Options& right) const;
 		bool operator!=(const SPU2Options& right) const;
@@ -862,6 +848,7 @@ struct Pcsx2Config
 		bool EthEnable{false};
 		NetApi EthApi{NetApi::Unset};
 		std::string EthDevice;
+		bool EthLogDHCP{false};
 		bool EthLogDNS{false};
 
 		bool InterceptDHCP{false};
@@ -962,7 +949,7 @@ struct Pcsx2Config
 		bool operator!=(const SpeedhackOptions& right) const;
 
 		static const char* GetSpeedHackName(SpeedHack id);
-		static std::optional<SpeedHack> ParseSpeedHackName(const std::string_view& name);
+		static std::optional<SpeedHack> ParseSpeedHackName(const std::string_view name);
 	};
 
 	struct DebugOptions
@@ -991,7 +978,6 @@ struct Pcsx2Config
 	struct EmulationSpeedOptions
 	{
 		BITFIELD32()
-		bool FrameLimitEnable : 1;
 		bool SyncToHostRefreshRate : 1;
 		BITFIELD_END
 
@@ -1124,7 +1110,6 @@ struct Pcsx2Config
 	bool
 		CdvdVerboseReads : 1, // enables cdvd read activity verbosely dumped to the console
 		CdvdDumpBlocks : 1, // enables cdvd block dumping
-		CdvdShareWrite : 1, // allows the iso to be modified while it's loaded
 		EnablePatches : 1, // enables patch detection and application
 		EnableCheats : 1, // enables cheat detection and application
 		EnablePINE : 1, // enables inter-process communication
@@ -1228,7 +1213,9 @@ namespace EmuFolders
 	extern std::string Videos;
 
 	/// Initializes critical folders (AppRoot, DataRoot, Settings). Call once on startup.
-	bool InitializeCriticalFolders();
+	void SetAppRoot();
+	bool SetResourcesDirectory();
+	bool SetDataDirectory(Error* error);
 
 	// Assumes that AppRoot and DataRoot have been initialized.
 	void SetDefaults(SettingsInterface& si);
@@ -1254,6 +1241,7 @@ namespace EmuFolders
 #define CHECK_CACHE (EmuConfig.Cpu.Recompiler.EnableEECache)
 #define CHECK_IOPREC (EmuConfig.Cpu.Recompiler.EnableIOP)
 #define CHECK_FASTMEM (EmuConfig.Cpu.Recompiler.EnableEE && EmuConfig.Cpu.Recompiler.EnableFastmem)
+#define CHECK_EXTRAMEM (memGetExtraMemMode())
 
 //------------ SPECIAL GAME FIXES!!! ---------------
 #define CHECK_VUADDSUBHACK (EmuConfig.Gamefixes.VuAddSubHack) // Special Fix for Tri-ace games, they use an encryption algorithm that requires VU addi opcode to be bit-accurate.

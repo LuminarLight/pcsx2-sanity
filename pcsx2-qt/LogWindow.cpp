@@ -101,8 +101,6 @@ void LogWindow::reattachToMainWindow()
 	if (g_main_window->windowState() & (Qt::WindowMaximized | Qt::WindowFullScreen))
 		return;
 
-	resize(width(), g_main_window->height());
-
 	const QPoint new_pos = g_main_window->pos() + QPoint(g_main_window->width() + 10, 0);
 	if (pos() != new_pos)
 		move(new_pos);
@@ -130,6 +128,7 @@ void LogWindow::updateWindowTitle()
 void LogWindow::createUi()
 {
 	setWindowIcon(QtHost::GetAppIcon());
+	setWindowFlag(Qt::WindowCloseButtonHint, false);
 	updateWindowTitle();
 
 	QAction* action;
@@ -251,18 +250,14 @@ void LogWindow::logCallback(LOGLEVEL level, ConsoleColors color, std::string_vie
 
 void LogWindow::closeEvent(QCloseEvent* event)
 {
+	if (!m_destroying)
+	{
+		event->ignore();
+		return;
+	}
 	Log::SetHostOutputLevel(LOGLEVEL_NONE, nullptr);
 
-	// Save size when actually closing, disable ourselves if the user closed us.
-	if (m_destroying)
-	{
-		saveSize();
-	}
-	else
-	{
-		Host::SetBaseBoolSettingValue("Logging", "EnableLogWindow", false);
-		Host::CommitBaseSettingChanges();
-	}
+	saveSize();
 
 	QMainWindow::closeEvent(event);
 }

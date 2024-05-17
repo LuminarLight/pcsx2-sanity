@@ -125,23 +125,23 @@ namespace GameDatabaseSchema
 namespace GameDatabase
 {
 	void ensureLoaded();
-	const GameDatabaseSchema::GameEntry* findGame(const std::string_view& serial, const std::string_view& crc = "");
+	const GameDatabaseSchema::GameEntry* findGame(const std::string_view serial, const std::string_view crc = "");
 
 	struct TrackHash
 	{
 		static constexpr u32 SIZE = 16;
 
-		bool parseHash(const std::string_view& str);
+		bool parseHash(const std::string_view str);
 		std::string toString() const;
 
 #define MAKE_OPERATOR(op) \
 	bool operator op(const TrackHash& hash) const { return (std::memcmp(data, hash.data, sizeof(data)) op 0); }
-		MAKE_OPERATOR(== );
-		MAKE_OPERATOR(!= );
-		MAKE_OPERATOR(< );
-		MAKE_OPERATOR(<= );
-		MAKE_OPERATOR(> );
-		MAKE_OPERATOR(>= );
+		MAKE_OPERATOR(==);
+		MAKE_OPERATOR(!=);
+		MAKE_OPERATOR(<);
+		MAKE_OPERATOR(<=);
+		MAKE_OPERATOR(>);
+		MAKE_OPERATOR(>=);
 #undef MAKE_OPERATOR
 
 		u8 data[SIZE];

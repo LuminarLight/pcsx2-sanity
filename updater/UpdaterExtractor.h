@@ -49,13 +49,13 @@ static inline bool ExtractUpdater(const char* archive_path, const char* destinat
 
 	lookstream.bufSize = kInputBufSize;
 	lookstream.realStream = &instream.vt;
-	LookToRead2_Init(&lookstream);
+	LookToRead2_INIT(&lookstream);
 	ScopedGuard buffer_guard([&lookstream]() {
 		ISzAlloc_Free(&g_Alloc, lookstream.buf);
 	});
 
 #ifdef _WIN32
-	WRes wres = InFile_OpenW(&instream.file, StringUtil::UTF8StringToWideString(archive_path).c_str());
+	WRes wres = InFile_OpenW(&instream.file, FileSystem::GetWin32Path(archive_path).c_str());
 #else
 	WRes wres = InFile_Open(&instream.file, archive_path);
 #endif

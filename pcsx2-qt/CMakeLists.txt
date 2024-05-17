@@ -57,9 +57,11 @@ target_sources(pcsx2-qt PRIVATE
 	Settings/AdvancedSettingsWidget.cpp
 	Settings/AdvancedSettingsWidget.h
 	Settings/AdvancedSettingsWidget.ui
+	Settings/AudioExpansionSettingsDialog.ui
 	Settings/AudioSettingsWidget.cpp
 	Settings/AudioSettingsWidget.h
 	Settings/AudioSettingsWidget.ui
+	Settings/AudioStretchSettingsDialog.ui
 	Settings/BIOSSettingsWidget.cpp
 	Settings/BIOSSettingsWidget.h
 	Settings/BIOSSettingsWidget.ui
@@ -158,6 +160,9 @@ target_sources(pcsx2-qt PRIVATE
 	Debugger/DisassemblyWidget.cpp
 	Debugger/DisassemblyWidget.h
 	Debugger/DisassemblyWidget.ui
+	Debugger/MemorySearchWidget.cpp
+	Debugger/MemorySearchWidget.h
+	Debugger/MemorySearchWidget.ui
 	Debugger/MemoryViewWidget.cpp
 	Debugger/MemoryViewWidget.h
 	Debugger/MemoryViewWidget.ui

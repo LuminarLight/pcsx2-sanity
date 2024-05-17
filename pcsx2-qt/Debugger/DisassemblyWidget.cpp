@@ -78,7 +78,7 @@ void DisassemblyWidget::contextAssembleInstruction()
 				this->m_nopedInstructions.insert({i, cpu->read32(i)});
 				cpu->write32(i, val);
 			}
-			QtHost::RunOnUIThread([this] { VMUpdate(); });
+			emit VMUpdate();
 		});
 	}
 }
@@ -91,7 +91,7 @@ void DisassemblyWidget::contextNoopInstruction()
 			this->m_nopedInstructions.insert({i, cpu->read32(i)});
 			cpu->write32(i, 0x00);
 		}
-		QtHost::RunOnUIThread([this] { VMUpdate(); });
+		emit VMUpdate();
 	});
 }
 
@@ -106,15 +106,16 @@ void DisassemblyWidget::contextRestoreInstruction()
 				this->m_nopedInstructions.erase(i);
 			}
 		}
-		QtHost::RunOnUIThread([this] { VMUpdate(); });
+		emit VMUpdate();
 	});
 }
 
 void DisassemblyWidget::contextRunToCursor()
 {
-	Host::RunOnCPUThread([&] {
-		CBreakPoints::AddBreakPoint(m_cpu->getCpuType(), m_selectedAddressStart, true);
-		m_cpu->resumeCpu();
+	const u32 selectedAddressStart = m_selectedAddressStart;
+	Host::RunOnCPUThread([cpu = m_cpu, selectedAddressStart] {
+		CBreakPoints::AddBreakPoint(cpu->getCpuType(), selectedAddressStart, true);
+		cpu->resumeCpu();
 	});
 }
 
@@ -129,13 +130,15 @@ void DisassemblyWidget::contextToggleBreakpoint()
 	if (!m_cpu->isAlive())
 		return;
 
-	if (CBreakPoints::IsAddressBreakPoint(m_cpu->getCpuType(), m_selectedAddressStart))
+	const u32 selectedAddressStart = m_selectedAddressStart;
+	const BreakPointCpu cpuType = m_cpu->getCpuType();
+	if (CBreakPoints::IsAddressBreakPoint(cpuType, selectedAddressStart))
 	{
-		Host::RunOnCPUThread([&] { CBreakPoints::RemoveBreakPoint(m_cpu->getCpuType(), m_selectedAddressStart); });
+		Host::RunOnCPUThread([cpuType, selectedAddressStart] { CBreakPoints::RemoveBreakPoint(cpuType, selectedAddressStart); });
 	}
 	else
 	{
-		Host::RunOnCPUThread([&] { CBreakPoints::AddBreakPoint(m_cpu->getCpuType(), m_selectedAddressStart); });
+		Host::RunOnCPUThread([cpuType, selectedAddressStart] { CBreakPoints::AddBreakPoint(cpuType, selectedAddressStart); });
 	}
 
 	breakpointsChanged();
@@ -280,7 +283,7 @@ void DisassemblyWidget::contextStubFunction()
 			this->m_stubbedFunctions.insert({curFuncAddress, {cpu->read32(curFuncAddress), cpu->read32(curFuncAddress + 4)}});
 			cpu->write32(curFuncAddress, 0x03E00008); // jr $ra
 			cpu->write32(curFuncAddress + 4, 0x00000000); // nop
-			QtHost::RunOnUIThread([this] { VMUpdate(); });
+			emit VMUpdate();
 		});
 	}
 	else // Stub the current opcode instead
@@ -289,7 +292,7 @@ void DisassemblyWidget::contextStubFunction()
 			this->m_stubbedFunctions.insert({m_selectedAddressStart, {cpu->read32(m_selectedAddressStart), cpu->read32(m_selectedAddressStart + 4)}});
 			cpu->write32(m_selectedAddressStart, 0x03E00008); // jr $ra
 			cpu->write32(m_selectedAddressStart + 4, 0x00000000); // nop
-			QtHost::RunOnUIThread([this] { VMUpdate(); });
+			emit VMUpdate();
 		});
 	}
 }
@@ -303,7 +306,7 @@ void DisassemblyWidget::contextRestoreFunction()
 			cpu->write32(curFuncAddress, std::get<0>(this->m_stubbedFunctions[curFuncAddress]));
 			cpu->write32(curFuncAddress + 4, std::get<1>(this->m_stubbedFunctions[curFuncAddress]));
 			this->m_stubbedFunctions.erase(curFuncAddress);
-			QtHost::RunOnUIThread([this] { VMUpdate(); });
+			emit VMUpdate();
 		});
 	}
 	else if (m_stubbedFunctions.find(m_selectedAddressStart) != m_stubbedFunctions.end())
@@ -312,7 +315,7 @@ void DisassemblyWidget::contextRestoreFunction()
 			cpu->write32(m_selectedAddressStart, std::get<0>(this->m_stubbedFunctions[m_selectedAddressStart]));
 			cpu->write32(m_selectedAddressStart + 4, std::get<1>(this->m_stubbedFunctions[m_selectedAddressStart]));
 			this->m_stubbedFunctions.erase(m_selectedAddressStart);
-			QtHost::RunOnUIThread([this] { VMUpdate(); });
+			emit VMUpdate();
 		});
 	}
 	else
@@ -320,6 +323,13 @@ void DisassemblyWidget::contextRestoreFunction()
 		QMessageBox::warning(this, tr("Restore Function Error"), tr("Unable to stub selected address."));
 	}
 }
+
+void DisassemblyWidget::contextShowOpcode()
+{
+	m_showInstructionOpcode = !m_showInstructionOpcode;
+	this->repaint();
+}
+
 void DisassemblyWidget::SetCpu(DebugInterface* cpu)
 {
 	m_cpu = cpu;
@@ -403,14 +413,13 @@ void DisassemblyWidget::paintEvent(QPaintEvent* event)
 	std::vector<BranchLine> branchLines = m_disassemblyManager.getBranchLines(m_visibleStart, visibleEnd - m_visibleStart);
 
 	s32 branchCount = 0;
-	s32 skippedBranches = 0;
 	for (const auto& branchLine : branchLines)
 	{
-		if (branchCount == 5)
+		if (branchCount == (m_showInstructionOpcode ? 3 : 5))
 			break;
 		const int winBottom = this->height();
 
-		const int x = this->width() - 10 - ((std::max(0, branchLine.laneIndex - skippedBranches)) * 10);
+		const int x = this->width() - 10 - (branchCount * 10);
 
 		int top, bottom;
 		// If the start is technically 'above' our address view
@@ -444,12 +453,6 @@ void DisassemblyWidget::paintEvent(QPaintEvent* event)
 		else
 		{
 			bottom = (((branchLine.second - m_visibleStart) / 4) * m_rowHeight) + (m_rowHeight / 2);
-		}
-
-		if ((top < 0 && bottom < 0) || (top > winBottom && bottom > winBottom) || (top < 0 && bottom > winBottom) || (top > winBottom && bottom < 0))
-		{
-			skippedBranches++;
-			continue;
 		}
 
 		branchCount++;
@@ -551,13 +554,14 @@ void DisassemblyWidget::mouseDoubleClickEvent(QMouseEvent* event)
 		return;
 
 	const u32 selectedAddress = (static_cast<int>(event->position().y()) / m_rowHeight * 4) + m_visibleStart;
-	if (CBreakPoints::IsAddressBreakPoint(m_cpu->getCpuType(), selectedAddress))
+	const BreakPointCpu cpuType = m_cpu->getCpuType();
+	if (CBreakPoints::IsAddressBreakPoint(cpuType, selectedAddress))
 	{
-		Host::RunOnCPUThread([&] { CBreakPoints::RemoveBreakPoint(m_cpu->getCpuType(), selectedAddress); });
+		Host::RunOnCPUThread([cpuType, selectedAddress] { CBreakPoints::RemoveBreakPoint(cpuType, selectedAddress); });
 	}
 	else
 	{
-		Host::RunOnCPUThread([&] { CBreakPoints::AddBreakPoint(m_cpu->getCpuType(), selectedAddress); });
+		Host::RunOnCPUThread([cpuType, selectedAddress] { CBreakPoints::AddBreakPoint(cpuType, selectedAddress); });
 	}
 	breakpointsChanged();
 	this->repaint();
@@ -621,6 +625,9 @@ void DisassemblyWidget::keyPressEvent(QKeyEvent* event)
 		case Qt::Key_G:
 			contextGoToAddress();
 			break;
+		case Qt::Key_J:
+			contextJumpToCursor();
+			break;
 		case Qt::Key_C:
 			contextCopyInstructionText();
 			break;
@@ -636,6 +643,9 @@ void DisassemblyWidget::keyPressEvent(QKeyEvent* event)
 			break;
 		case Qt::Key_Left:
 			gotoAddress(m_cpu->getPC());
+			break;
+		case Qt::Key_O:
+			m_showInstructionOpcode = !m_showInstructionOpcode;
 			break;
 	}
 
@@ -654,9 +664,10 @@ void DisassemblyWidget::customMenuRequested(QPoint pos)
 	connect(action, &QAction::triggered, this, &DisassemblyWidget::contextCopyAddress);
 	contextMenu->addAction(action = new QAction(tr("Copy Instruction Hex"), this));
 	connect(action, &QAction::triggered, this, &DisassemblyWidget::contextCopyInstructionHex);
-	contextMenu->addAction(action = new QAction(tr("Copy Instruction Text"), this));
+	contextMenu->addAction(action = new QAction(tr("&Copy Instruction Text"), this));
+	action->setShortcut(QKeySequence(Qt::Key_C));
 	connect(action, &QAction::triggered, this, &DisassemblyWidget::contextCopyInstructionText);
-	if (m_selectedAddressStart == m_cpu->GetSymbolMap().GetFunctionStart(m_selectedAddressStart)) 
+	if (m_selectedAddressStart == m_cpu->GetSymbolMap().GetFunctionStart(m_selectedAddressStart))
 	{
 		contextMenu->addAction(action = new QAction(tr("Copy Function Name"), this));
 		connect(action, &QAction::triggered, this, &DisassemblyWidget::contextCopyFunctionName);
@@ -667,21 +678,25 @@ void DisassemblyWidget::customMenuRequested(QPoint pos)
 		contextMenu->addAction(action = new QAction(tr("Restore Instruction(s)"), this));
 		connect(action, &QAction::triggered, this, &DisassemblyWidget::contextRestoreInstruction);
 	}
-	contextMenu->addAction(action = new QAction(tr("Assemble new Instruction(s)"), this));
+	contextMenu->addAction(action = new QAction(tr("Asse&mble new Instruction(s)"), this));
+	action->setShortcut(QKeySequence(Qt::Key_M));
 	connect(action, &QAction::triggered, this, &DisassemblyWidget::contextAssembleInstruction);
 	contextMenu->addAction(action = new QAction(tr("NOP Instruction(s)"), this));
 	connect(action, &QAction::triggered, this, &DisassemblyWidget::contextNoopInstruction);
 	contextMenu->addSeparator();
 	contextMenu->addAction(action = new QAction(tr("Run to Cursor"), this));
 	connect(action, &QAction::triggered, this, &DisassemblyWidget::contextRunToCursor);
-	contextMenu->addAction(action = new QAction(tr("Jump to Cursor"), this));
+	contextMenu->addAction(action = new QAction(tr("&Jump to Cursor"), this));
+	action->setShortcut(QKeySequence(Qt::Key_J));
 	connect(action, &QAction::triggered, this, &DisassemblyWidget::contextJumpToCursor);
-	contextMenu->addAction(action = new QAction(tr("Toggle Breakpoint"), this));
+	contextMenu->addAction(action = new QAction(tr("Toggle &Breakpoint"), this));
+	action->setShortcut(QKeySequence(Qt::Key_B));
 	connect(action, &QAction::triggered, this, &DisassemblyWidget::contextToggleBreakpoint);
 	contextMenu->addAction(action = new QAction(tr("Follow Branch"), this));
 	connect(action, &QAction::triggered, this, &DisassemblyWidget::contextFollowBranch);
 	contextMenu->addSeparator();
-	contextMenu->addAction(action = new QAction(tr("Go to Address"), this));
+	contextMenu->addAction(action = new QAction(tr("&Go to Address"), this));
+	action->setShortcut(QKeySequence(Qt::Key_G));
 	connect(action, &QAction::triggered, this, &DisassemblyWidget::contextGoToAddress);
 	contextMenu->addAction(action = new QAction(tr("Go to in Memory View"), this));
 	connect(action, &QAction::triggered, this, [this]() { gotoInMemory(m_selectedAddressStart); });
@@ -702,6 +717,14 @@ void DisassemblyWidget::customMenuRequested(QPoint pos)
 		contextMenu->addAction(action = new QAction(tr("Stub (NOP) Function"), this));
 		connect(action, &QAction::triggered, this, &DisassemblyWidget::contextStubFunction);
 	}
+
+	contextMenu->addSeparator();
+	contextMenu->addAction(action = new QAction(tr("Show &Opcode"), this));
+	action->setShortcut(QKeySequence(Qt::Key_O));
+	action->setCheckable(true);
+	action->setChecked(m_showInstructionOpcode);
+	connect(action, &QAction::triggered, this, &DisassemblyWidget::contextShowOpcode);
+
 	contextMenu->setAttribute(Qt::WA_DeleteOnClose);
 	contextMenu->popup(this->mapToGlobal(pos));
 }
@@ -719,11 +742,34 @@ inline QString DisassemblyWidget::DisassemblyStringFromAddress(u32 address, QFon
 	const bool isConditionalMet = line.info.conditionMet;
 	const bool isCurrentPC = m_cpu->getPC() == address;
 
+	bool isFunctionNoReturn = false;
+
 	const std::string addressSymbol = m_cpu->GetSymbolMap().GetLabelName(address);
-
+	if(m_cpu->GetSymbolMap().GetFunctionStart(address) == address)
+	{
+		isFunctionNoReturn = m_cpu->GetSymbolMap().GetFunctionNoReturn(address);
+	}
 	const auto demangler = demangler::CDemangler::createGcc();
+	const bool showOpcode = m_showInstructionOpcode && m_cpu->isAlive();
 
-	QString lineString("  %1  %2 %3  %4 %5");
+	QString lineString;
+	if (showOpcode)
+	{
+		lineString = QString(" %1 %2 %3  %4 %5  %6 %7");
+	}
+	else
+	{
+		lineString = QString(" %1 %2  %3 %4  %5 %6");
+	}
+
+	if(isFunctionNoReturn)
+	{
+		lineString = lineString.arg("NR");
+	}
+	else
+	{
+		lineString = lineString.arg("  ");
+	}
 
 	if (addressSymbol.empty()) // The address wont have symbol text if it's the start of a function for example
 		lineString = lineString.arg(address, 8, 16, QChar('0')).toUpper();
@@ -745,7 +791,13 @@ inline QString DisassemblyWidget::DisassemblyStringFromAddress(u32 address, QFon
 			symbolString = QString::fromStdString(addressSymbol);
 		}
 
-		lineString = lineString.arg(metric.elidedText(symbolString, Qt::ElideRight, (selected ? 32 : 8) * font.pointSize()));
+		lineString = lineString.arg(metric.elidedText(symbolString, Qt::ElideRight, (selected ? 32 : 7) * font.pointSize()));
+	}
+
+	if (showOpcode)
+	{
+		const u32 opcode = m_cpu->read32(address);
+		lineString = lineString.arg(QtUtils::FilledQStringFromValue(opcode, 16));
 	}
 
 	lineString = lineString.leftJustified(4, ' ') // Address / symbol
@@ -760,7 +812,7 @@ inline QString DisassemblyWidget::DisassemblyStringFromAddress(u32 address, QFon
 QColor DisassemblyWidget::GetAddressFunctionColor(u32 address)
 {
 	// This is an attempt to figure out if the current palette is dark or light
-	// We calculate the luminescence of the alternateBase colour
+	// We calculate the luminance of the alternateBase colour
 	// and swap between our darker and lighter function colours
 
 	std::array<QColor, 6> colors;
@@ -832,7 +884,7 @@ void DisassemblyWidget::gotoAddress(u32 address, bool should_set_focus)
 	m_selectedAddressEnd = destAddress;
 
 	this->repaint();
-	if(should_set_focus)
+	if (should_set_focus)
 		this->setFocus();
 }
 

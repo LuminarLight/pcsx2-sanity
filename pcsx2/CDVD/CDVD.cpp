@@ -7,12 +7,14 @@
 #include "CDVD/IsoReader.h"
 #include "CDVD/IsoFileFormats.h"
 #include "GS.h"
+#include "SIO/Sio.h"
 #include "Elfheader.h"
 #include "ps2/BiosTools.h"
 #include "Recording/InputRecording.h"
 #include "Host.h"
 #include "R3000A.h"
 #include "Common.h"
+#include "IopBios.h"
 #include "IopHw.h"
 #include "IopDma.h"
 #include "VMManager.h"
@@ -376,7 +378,7 @@ s32 cdvdWriteConfig(const u8* config)
 	return 0;
 }
 
-static bool cdvdUncheckedLoadDiscElf(ElfObject* elfo, IsoReader& isor, const std::string_view& elfpath, bool isPSXElf, Error* error)
+static bool cdvdUncheckedLoadDiscElf(ElfObject* elfo, IsoReader& isor, const std::string_view elfpath, bool isPSXElf, Error* error)
 {
 	// Strip out cdrom: prefix, and any leading slashes.
 	size_t start_pos = (elfpath[5] == '0') ? 7 : 6;
@@ -414,12 +416,13 @@ static bool cdvdUncheckedLoadDiscElf(ElfObject* elfo, IsoReader& isor, const std
 	return elfo->OpenIsoFile(std::move(iso_filename), isor, isPSXElf, error);
 }
 
-bool cdvdLoadElf(ElfObject* elfo, const std::string_view& elfpath, bool isPSXElf, Error* error)
+bool cdvdLoadElf(ElfObject* elfo, const std::string_view elfpath, bool isPSXElf, Error* error)
 {
-	if (elfpath.starts_with("host:"))
+	if (R3000A::ioman::is_host(elfpath))
 	{
-		std::string host_filename(elfpath.substr(5));
-		return elfo->OpenFile(host_filename, isPSXElf, error);
+		const std::string_view path(elfpath.substr(elfpath.find(':') + 1));
+		const std::string file_path(R3000A::ioman::host_path(path, false));
+		return elfo->OpenFile(file_path, isPSXElf, error);
 	}
 	else if (elfpath.starts_with("cdrom:") || elfpath.starts_with("cdrom0:"))
 	{
@@ -436,7 +439,7 @@ bool cdvdLoadElf(ElfObject* elfo, const std::string_view& elfpath, bool isPSXElf
 	}
 }
 
-bool cdvdLoadDiscElf(ElfObject* elfo, IsoReader& isor, const std::string_view& elfpath, bool isPSXElf, Error* error)
+bool cdvdLoadDiscElf(ElfObject* elfo, IsoReader& isor, const std::string_view elfpath, bool isPSXElf, Error* error)
 {
 	if (!elfpath.starts_with("cdrom:") && !elfpath.starts_with("cdrom0:"))
 		return false;
@@ -1296,12 +1299,12 @@ __fi void cdvdReadInterrupt()
 
 			if (cdvd.CurrentRetryCnt <= cdvd.RetryCntMax)
 			{
-				CDVD_LOG("CDVD read err, retrying... (attempt %d of %d)", cdvd.CurrentRetryCnt, cdvd.RetryCntMax);
+				ERROR_LOG("CDVD read err, retrying... (attempt {} of {})", cdvd.CurrentRetryCnt, cdvd.RetryCntMax);
 				cdvd.ReadErr = DoCDVDreadTrack(cdvd.CurrentSector, cdvd.ReadMode);
 				CDVDREAD_INT(cdvd.ReadTime);
 			}
 			else
-				Console.Error("CDVD READ ERROR, sector = 0x%08x", cdvd.CurrentSector);
+				ERROR_LOG("CDVD READ ERROR, sector = {}", cdvd.CurrentSector);
 
 			return;
 		}
@@ -1579,12 +1582,19 @@ void cdvdUpdateTrayState()
 
 void cdvdVsync()
 {
+	// We're counting in frames, but one second isn't exactly 50 or 60 frames in most cases, so we'll keep the fractions.
 	cdvd.RTCcount++;
-	if (cdvd.RTCcount < GetVerticalFrequency())
+	const double verticalFrequency = GetVerticalFrequency();
+	if (cdvd.RTCcount < verticalFrequency)
 		return;
-	cdvd.RTCcount = 0;
+
+	cdvd.RTCcount -= verticalFrequency;
 
 	cdvdUpdateTrayState();
+
+	// FolderMemoryCard needs information on how much time has passed since the last write
+	// Call it every second.
+	sioNextFrame();
 
 	cdvd.RTC.second++;
 	if (cdvd.RTC.second < 60)

@@ -123,7 +123,7 @@ struct cdvdStruct
 
 	// Calculates the number of Vsyncs and once it reaches a total number of Vsyncs worth a second with respect to
 	// the videomode's vertical frequency, it updates the real time clock.
-	int RTCcount;
+	double RTCcount;
 	cdvdRTC RTC;
 
 	u32 CurrentSector;
@@ -180,8 +180,8 @@ extern void cdvdWrite(u8 key, u8 rt);
 extern void cdvdGetDiscInfo(std::string* out_serial, std::string* out_elf_path, std::string* out_version, u32* out_crc,
 	CDVDDiscType* out_disc_type);
 extern u32 cdvdGetElfCRC(const std::string& path);
-extern bool cdvdLoadElf(ElfObject* elfo, const std::string_view& elfpath, bool isPSXElf, Error* error);
-extern bool cdvdLoadDiscElf(ElfObject* elfo, IsoReader& isor, const std::string_view& elfpath, bool isPSXElf, Error* error);
+extern bool cdvdLoadElf(ElfObject* elfo, const std::string_view elfpath, bool isPSXElf, Error* error);
+extern bool cdvdLoadDiscElf(ElfObject* elfo, IsoReader& isor, const std::string_view elfpath, bool isPSXElf, Error* error);
 
 extern s32 cdvdCtrlTrayOpen();
 extern s32 cdvdCtrlTrayClose();

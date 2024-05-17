@@ -5,7 +5,7 @@
 
 #include "common/Pcsx2Defs.h"
 
-#include "glad.h"
+#include "glad/gl.h"
 
 #include <string_view>
 #include <vector>
@@ -73,7 +73,7 @@ public:
 
 	void BindUniformBlock(const char* name, u32 index);
 
-	void SetName(const std::string_view& name);
+	void SetName(const std::string_view name);
 	void SetFormattedName(const char* format, ...);
 
 	GLProgram& operator=(const GLProgram&) = delete;
