@@ -1,0 +1,52 @@
+[TOOL]
+gametitle=Jak X Demo (NTSC-U)
+author=Original made by Luminar Light. Ported by YukiXXL.
+description=Makes the game boot in Debug Mode.
+comment=Enables Developer/Debug Mode - Credit to Luminar for making the patches.
+comment=Special thanks to water111 and Vaser for their relevant research done for earlier Jak games. It helped make this possible.
+
+//---// The following patches are on the "ELF side". //---//
+
+// nop the disabling of MasterDebug, this will make MasterDebug stay 1
+// Edit: We don't actually need this, and I couldn't find a way to make the game work with MasterDebug on. So this patch is commented out for now, but kept here for reference.
+//patch=0,EE,201F9A3C,extended,00000000
+
+// nop the disabling of DebugSegment, this will make DebugSegment stay 1
+patch=0,EE,201F9A44,extended,00000000
+// nop the disabling of DebugSymbols, this will make DebugSymbols stay 1
+patch=0,EE,201F9A50,extended,00000000
+
+// 		The following patch was copied from Jak 3's patches (found the same thing in Jak X), but since it only matters with MasterDebug, we can comment it out.
+// NOP SendFromBufferD call in InitListener - This is called only when MasterDebug is on
+//patch=0,EE,20203270,extended,00000000
+
+// Extra console logs. Very useful.
+// The E-type patch is recommended because writing the patch too early can cause weird problems in other builds, so it is safe to have it in this one as well (though not essential).
+patch=0,EE,20111BC4,extended,00000000
+
+// nop the weird function call in InitMachine that returns something but we don't use it because I rewrote the init heap function calls.
+patch=0,EE,201FCEBC,extended,00000000
+
+// Change malloc param to 0x10, because it is like that in Jak 3 and it works.
+patch=0,EE,201FCECC,extended,24040010
+
+// Rewrite init heap function call for global heap.
+patch=0,EE,201FCF3C,extended,8E04F0C0
+patch=0,EE,201FCF40,extended,3C0604D9
+patch=0,EE,201FCF44,extended,34C68E60
+patch=0,EE,201FCF48,extended,00402825
+patch=0,EE,201FCF50,extended,00000000
+
+// Rewrite init heap function call for debug heap.
+patch=0,EE,201FCF74,extended,3C0F001F
+patch=0,EE,201FCF78,extended,3C0602F0
+patch=0,EE,201FCF7C,extended,8DE4F0C4
+patch=0,EE,201FCF80,extended,00000000
+patch=0,EE,201FCF88,extended,3C050500
+
+// 		This was copied straight from the Jak 3 patches.
+// This is about changing the stack pointer
+// Shoves a MIPS instruction into near the very top of the entry point
+// Orginally at this position there is `2D E8 40 00` - `daddu $sp, $v0, $zero`
+// This changes it to - `lui sp, 0x0800` Which loads the value 0x0800 to the stackpointer register, modifying it.
+patch=0,EE,201F977C,extended,3C1D0800

@@ -1,0 +1,98 @@
+[TOOL]
+gametitle=Jak X Public Beta (PAL-E)
+author=Original made by Luminar Light. Ported by YukiXXL.
+description=Makes the game boot in Debug Mode.
+comment=Enables Developer/Debug Mode - Credit to Luminar for making the patches.
+comment=Special thanks to water111 and Vaser for their relevant research done for earlier Jak games. It helped make this possible.
+
+//---// The following patches are on the "ELF side". //---//
+
+//Boots the game into the Retail mode.
+patch=1,EE,E0016562,extended,00272738
+patch=1,EE,20272738,extended,79616C70
+
+// nop the disabling of MasterDebug, this will make MasterDebug stay 1
+// Edit: We don't actually need this, and I couldn't find a way to make the game work with MasterDebug on. So this patch is commented out for now, but kept here for reference.
+//patch=2,EE,20257724,extended,00000000
+
+// nop the disabling of DebugSegment, this will make DebugSegment stay 1
+patch=2,EE,2025772C,extended,00000000
+// nop the disabling of DebugSymbols, this will make DebugSymbols stay 1
+patch=2,EE,20257738,extended,00000000
+
+// 		The following patch was copied from Jak 3's patches (found the same thing in Jak X), but since it only matters with MasterDebug, we can comment it out.
+// NOP SendFromBufferD call in InitListener - This is called only when MasterDebug is on
+//patch=2,EE,2026108C,extended,00000000
+
+// Extra console logs. Very useful.
+// The E-type patch is recommended because writing the patch too early can cause weird problems in other builds, so it is safe to have it in this one as well (though not essential).
+patch=2,EE,20113844,extended,00000000
+
+// nop the weird function call in InitMachine that returns something but we don't use it because I rewrote the init heap function calls.
+patch=2,EE,2025ACF4,extended,00000000
+
+// Change malloc param to 0x10, because it is like that in Jak 3 and it works.
+patch=2,EE,2025AD04,extended,24040010
+
+// Rewrite init heap function call for global heap.
+patch=2,EE,2025AD74,extended,8E04CDC0
+patch=2,EE,2025AD78,extended,3C0604D3
+patch=2,EE,2025AD7C,extended,34C61C10
+patch=2,EE,2025AD80,extended,00402825
+patch=2,EE,2025AD88,extended,00000000
+
+// Rewrite init heap function call for debug heap.
+patch=2,EE,2025ADAC,extended,3C0F0025
+patch=2,EE,2025ADB0,extended,3C0602F0
+patch=2,EE,2025ADB4,extended,8DE4CDC4
+patch=2,EE,2025ADB8,extended,00000000
+patch=2,EE,2025ADC0,extended,3C050500
+
+// 		This was copied straight from the Jak 3 patches.
+// This is about changing the stack pointer
+// Shoves a MIPS instruction into near the very top of the entry point
+// Orginally at this position there is `2D E8 40 00` - `daddu $sp, $v0, $zero`
+// This changes it to - `lui sp, 0x0800` Which loads the value 0x0800 to the stackpointer register, modifying it.
+patch=2,EE,2025746C,extended,3C1D0800
+
+//---// The following patches are on the "memory side". //---//
+
+//Fixes crashing by replacing missing IPAs with Logo
+//Check just in case
+patch=1,EE,E0187073,extended,009E19A8
+// Frozen Speedway - snow
+patch=1,EE,209DF338,extended,6F676F6C
+patch=1,EE,209DF33C,extended,00000000
+// Haven City - haven
+patch=1,EE,209D9B08,extended,6F676F6C
+patch=1,EE,209D9B0C,extended,00000000
+// Sewer Raceway - sewer
+patch=1,EE,209DD6D8,extended,6F676F6C
+patch=1,EE,209DD6DC,extended,00000000
+// City Outskirts - havjung
+patch=1,EE,209DB018,extended,6F676F6C
+patch=1,EE,209DB01C,extended,00000000
+// Spargus City - spargus
+patch=1,EE,209E19A8,extended,6F676F6C
+patch=1,EE,209E19AC,extended,00000000
+// Waterworks Circuit - havsew
+patch=1,EE,209D8338,extended,6F676F6C
+patch=1,EE,209D833C,extended,00000000
+// Canyon Run - canyon
+patch=1,EE,209DB3C8,extended,6F676F6C
+patch=1,EE,209DB3CC,extended,00000000
+// Beachfront Drive - canspar
+patch=1,EE,209DD358,extended,6F676F6C
+patch=1,EE,209DD35C,extended,00000000
+// Mar Coliseum - coliseum
+patch=1,EE,209DDA58,extended,6F676F6C
+patch=1,EE,209DDA5C,extended,00000000
+// Desert Arena - desarena
+patch=1,EE,209DB748,extended,6F676F6C
+patch=1,EE,209DB74C,extended,00000000
+// Wasteland Isle - desisle
+patch=1,EE,209CA278,extended,6F676F6C
+patch=1,EE,209CA27C,extended,00000000
+// Ice Pit - snobowl
+patch=1,EE,209D6AE8,extended,6F676F6C
+patch=1,EE,209D6AEC,extended,00000000
